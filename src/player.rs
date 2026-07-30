@@ -1,24 +1,45 @@
-use crate::{Hand};
+use crate::{Hand, Resource};
 
 #[derive(Debug, PartialEq, Copy, Clone)]
-pub enum PlayerColor { Red, Blue, White, Orange }
+pub enum PlayerColor {
+    Red,
+    Blue,
+    White,
+    Orange,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PlayerId(u8);
+pub struct PlayerId(usize);
 impl PlayerId {
-    pub fn new(id: u8) -> Self {
+    pub fn new(id: usize) -> Self {
         Self(id)
+    }
+
+    pub fn id(self) -> usize {
+        self.0
     }
 }
 
-
 pub struct Player {
-    color : PlayerColor,
-    hand : Hand
+    color: PlayerColor,
+    hand: Hand,
 }
 
 impl Player {
+    pub fn new(color: PlayerColor) -> Self {
+        Self {
+            color,
+            hand: Hand::default(),
+        }
+    }
 
+    pub fn hand(&self) -> &Hand {
+        &self.hand
+    }
+
+    pub fn receive(&mut self, resource : Resource, amount : u8){
+        self.hand.add(resource, amount);
+    }
 }
 
 #[cfg(test)]
@@ -30,10 +51,12 @@ mod tests {
         assert_eq!(PlayerId::new(0), PlayerId(0));
     }
 
-
     #[test]
-    fn test_player_color(){
-        let player = Player { color: PlayerColor::Red, hand: Hand::default() };
+    fn test_player_color() {
+        let player = Player {
+            color: PlayerColor::Red,
+            hand: Hand::default(),
+        };
         assert_eq!(player.color, PlayerColor::Red);
     }
 }

@@ -44,7 +44,7 @@ impl Board {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use crate::board::building::BuildingKind;
     use crate::player::PlayerId;
     use crate::board::production::{Gain, Production};
@@ -52,7 +52,7 @@ mod tests {
     use crate::resource::Resource;
     use super::*;
 
-    fn init_board() -> Board {
+    pub fn init_board() -> Board {
         Board {
             tiles: vec![Tile::Forest(NumberToken::new(6).unwrap()) , Tile::Hills(NumberToken::new(8).unwrap())],
             tile_vertices: vec![[VertexId(0), VertexId(1), VertexId(2), VertexId(3), VertexId(4), VertexId(5)], [VertexId(2), VertexId(3), VertexId(6), VertexId(7), VertexId(8), VertexId(9)]],
