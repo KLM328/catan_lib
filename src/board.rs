@@ -1,10 +1,13 @@
-use crate::{Roll, Tile};
-use crate::board::building::Building;
-use crate::board::production::{Gain, Production};
+use crate::Roll;
 
-pub mod tile;
+
+mod tile;
 mod building;
 mod production;
+
+pub use crate::board::tile::{Tile, NumberToken};
+pub use crate::board::building::Building;
+pub use crate::board::production::{Gain, Production};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TileId(u8);

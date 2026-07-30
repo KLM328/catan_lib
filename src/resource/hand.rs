@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::Cost;
+use crate::{Cost, Gain, Resource};
 use crate::resource::counts::ResourceCounts;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,5 +25,42 @@ impl Hand {
 
     pub fn resources(&self) -> ResourceCounts {
         self.0
+    }
+    
+    pub fn add(&mut self, gain : Gain){
+        self.0.add(gain.resource, gain.amount);
+    }
+    
+    
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Resource;
+    use crate::Gain;
+    use crate::player::PlayerId;
+    use super::*;
+
+    #[test]
+    fn test_hand_pay_with_not_enough_resources() -> () {
+        let mut hand = Hand::default();
+        assert_eq!(hand.pay(&Cost::ROAD), Err(NotEnoughResources));
+        assert_eq!(hand.resources(), ResourceCounts::default());
+    }
+
+    #[test]
+    fn test_hand_pay_with_enough_resources() -> () {
+        let mut hand = Hand::default();
+        hand.add(Gain { player: PlayerId::new(1), resource: Resource::Brick, amount: 1 });
+        hand.add(Gain { player: PlayerId::new(1), resource: Resource::Wood, amount: 1 });
+        assert_eq!(hand.pay(&Cost::ROAD), Ok(()));
+        assert_eq!(hand.resources(), ResourceCounts::default());
+    }
+    
+    #[test]
+    fn test_hand_add() -> () {
+        let mut hand = Hand::default();
+        hand.add(Gain { player: PlayerId::new(1), resource: Resource::Brick, amount: 1 });
+        assert_eq!(hand.resources(), ResourceCounts::new([0, 0, 1, 0, 0]));
     }
 }
