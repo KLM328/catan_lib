@@ -41,8 +41,6 @@ impl Hand {
 #[cfg(test)]
 mod tests {
     use crate::Resource;
-    use crate::Gain;
-    use crate::player::PlayerId;
     use super::*;
 
     #[test]

@@ -10,9 +10,24 @@ pub use crate::board::building::Building;
 pub use crate::board::production::{Gain, Production};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TileId(u8);
+pub struct TileId(usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct VertexId(u8);
+pub struct VertexId(usize);
+
+impl VertexId {
+    pub fn new(index: usize) -> VertexId {
+        VertexId(index)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EdgeId(usize);
+
+impl EdgeId {
+    pub fn new(index: usize) -> EdgeId {
+        EdgeId(index)
+    }
+}
 
 pub struct Board {
     tiles: Vec<Tile>,
@@ -25,7 +40,7 @@ impl Board {
         let mut production = Production::default();
 
         for (index, tile) in self.tiles.iter().enumerate() {
-            if TileId(index as u8) == self.robber { continue; }
+            if TileId(index) == self.robber { continue; }
             if tile.number().map(|n| n.value()) != Some(roll.value()) { continue; }
             let Some(resource) = tile.resource() else { continue; };
 
