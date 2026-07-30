@@ -1,5 +1,4 @@
 use std::fmt;
-use rand;
 use rand::RngExt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,7 +30,7 @@ impl Roll {
         }
     }
 
-    pub fn roll() -> Self {
+    pub fn random() -> Self {
         let mut rng = rand::rng();
         Self::new(rng.random_range(1..=6), rng.random_range(1..=6)).unwrap()
     }
@@ -50,7 +49,7 @@ mod tests {
 
     #[test]
     fn test_roll() {
-        assert!(matches!(Roll::roll().value(), 2..=12));
+        assert!(matches!(Roll::random().value(), 2..=12));
     }
 
     #[test]

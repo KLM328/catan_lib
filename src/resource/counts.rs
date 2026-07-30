@@ -14,7 +14,7 @@ impl ResourceCounts {
         self.0[r.index()] += n;
     }
     pub fn count(&self) -> u8 {
-        self.0.iter().map(|&n| n).sum()
+        self.0.iter().copied().sum()
     }
 
     pub fn covers(&self, other: &Self) -> bool {
