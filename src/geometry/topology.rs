@@ -86,9 +86,10 @@ impl Topology {
         hexes
     }
 
-    pub fn standard() -> Topology{
-        Self::from_hexes(&Self::hexagon(2))
+    pub fn hexagonal(radius: i8) -> Topology {
+        Self::from_hexes(&Self::hexagon(radius))
     }
+
 
     #[cfg(test)]
     pub fn test_topology() -> Topology{
@@ -173,7 +174,7 @@ mod tests {
 
     #[test]
     fn every_vertex_has_two_or_three_edges() {
-        let topo = Topology::standard();
+        let topo = Topology::hexagonal(2);
         let mut degree = vec![0usize; topo.vertex_count()];
         for e in &topo.edges_endpoints {
             assert_ne!(e[0], e[1], "une arête ne peut pas relier un sommet à lui-même");
@@ -186,7 +187,7 @@ mod tests {
 
     #[test]
     fn every_tile_agrees_on_edge_endpoints() {
-        let topo = Topology::standard();
+        let topo = Topology::hexagonal(2);
         for (tile, edges) in topo.tile_edges().iter().enumerate() {
             let vertices = topo.tile_vertices()[tile];
             for dir in 0..6 {

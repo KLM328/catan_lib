@@ -1,9 +1,12 @@
 mod topology;
 mod hex;
+mod ids;
 
 pub use topology::Topology;
 
 pub use hex::{Hex, HexCorner};
+
+pub use ids::{EdgeId, VertexId, TileId};
 
 use std::fmt;
 
