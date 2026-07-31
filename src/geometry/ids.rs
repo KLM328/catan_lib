@@ -22,7 +22,7 @@ impl VertexId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct EdgeId(usize);
 
 impl EdgeId {
