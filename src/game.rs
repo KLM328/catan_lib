@@ -1,7 +1,14 @@
 use crate::{Board, Player, Production, Roll};
 use crate::player::PlayerId;
 
+pub enum GameStatus {
+    Placement,
+    Playing,
+    End,
+}
+
 pub struct Game {
+    status: GameStatus,
     players: Vec<Player>,
     board: Board
 }
@@ -34,11 +41,12 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use crate::board::tests::init_board;
+    use crate::game::GameStatus::Placement;
     use crate::ResourceCounts;
     use super::*;
 
     fn init_game() -> Game{
-        Game{players : vec![Player::new(crate::player::PlayerColor::Red), Player::new(crate::player::PlayerColor::Blue)], board: init_board()}
+        Game{status : Placement, players : vec![Player::new(crate::player::PlayerColor::Red), Player::new(crate::player::PlayerColor::Blue)], board: init_board()}
     }
 
     #[test]
