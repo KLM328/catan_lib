@@ -65,10 +65,18 @@ impl fmt::Display for InvalidAction {
                 write!(f, "Le vertex {} n'existe pas", vertex_id.value())
             }
             InvalidAction::IsNotSettlement(vertex_id) => {
-                write!(f, "ce n'est pas une colonie sur l'emplacement {}", vertex_id.value())
+                write!(
+                    f,
+                    "ce n'est pas une colonie sur l'emplacement {}",
+                    vertex_id.value()
+                )
             }
             InvalidAction::UnexistingBuilding(vertex_id) => {
-                write!(f, "Aucune construction sur l'emplacement {}", vertex_id.value())
+                write!(
+                    f,
+                    "Aucune construction sur l'emplacement {}",
+                    vertex_id.value()
+                )
             }
             InvalidAction::UnauthorizedAction => {
                 write!(f, "Vous n'avez pas la permission d'effectuer cette action")
@@ -160,22 +168,29 @@ impl Board {
         vertexs.push(vertex);
         if !vertexs.iter().all(|v| self.buildings[v.value()].is_none()) {
             false
-        } else if !matches!(game_status, GameStatus::Placement)
-            && !connected_edges
-                .iter()
-                .any(|&e_id| self.roads[e_id.value()] == Some(player))
-        {
-            false
         } else {
-            true
+            matches!(game_status, GameStatus::Placement)
+                || connected_edges
+                    .iter()
+                    .any(|&e_id| self.roads[e_id.value()] == Some(player))
         }
     }
 
-    pub fn can_place_road(&self, game_status: GameStatus, edge: VertexId, player: PlayerId) -> bool {
+    pub fn can_place_road(
+        &self,
+        game_status: GameStatus,
+        edge: VertexId,
+        player: PlayerId,
+    ) -> bool {
         todo!()
     }
 
-    pub fn place_road(&self, game_status: GameStatus, edge: VertexId, player: PlayerId) -> Result<(), InvalidAction> {
+    pub fn place_road(
+        &self,
+        game_status: GameStatus,
+        edge: VertexId,
+        player: PlayerId,
+    ) -> Result<(), InvalidAction> {
         todo!()
     }
 
@@ -209,13 +224,18 @@ impl Board {
         }
     }
 
-    pub fn upgrade_settlement(&mut self, vertex: VertexId, player: PlayerId) -> Result<(), InvalidAction> {
+    pub fn upgrade_settlement(
+        &mut self,
+        vertex: VertexId,
+        player: PlayerId,
+    ) -> Result<(), InvalidAction> {
         if let Some(building) = self.buildings[vertex.value()] {
-            if matches!(building.kind(), BuildingKind::Settlement){
+            if matches!(building.kind(), BuildingKind::Settlement) {
                 if building.owner() == player {
-                    self.buildings[vertex.value()] = Some(Building::new(BuildingKind::City, player));
+                    self.buildings[vertex.value()] =
+                        Some(Building::new(BuildingKind::City, player));
                     Ok(())
-                }else {
+                } else {
                     Err(InvalidAction::UnauthorizedAction)
                 }
             } else {
@@ -325,19 +345,29 @@ pub mod tests {
     #[test]
     fn test_can_place_building_ko_neighbor() {
         let board = init_board();
-        assert!(!board.can_place_building(GameStatus::Placement, VertexId::new(3), PlayerId::new(0)));
+        assert!(!board.can_place_building(
+            GameStatus::Placement,
+            VertexId::new(3),
+            PlayerId::new(0)
+        ));
     }
 
     #[test]
     fn test_upgrade_settlement_ok() {
         let mut board = init_board();
-        board.upgrade_settlement(VertexId::new(8), PlayerId::new(1)).unwrap();
+        board
+            .upgrade_settlement(VertexId::new(8), PlayerId::new(1))
+            .unwrap();
         assert_eq!(board.buildings[8].unwrap().kind(), BuildingKind::City);
     }
 
     #[test]
     fn test_upgrade_settlement_ko_wrong_player() {
         let mut board = init_board();
-        assert!(board.upgrade_settlement(VertexId::new(8), PlayerId::new(0)).is_err());
+        assert!(
+            board
+                .upgrade_settlement(VertexId::new(8), PlayerId::new(0))
+                .is_err()
+        );
     }
 }

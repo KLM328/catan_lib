@@ -1,4 +1,4 @@
-use crate::{Board, Hex, InvalidBoard, NumberToken, Terrain, TileId, Topology};
+use crate::{Board, InvalidBoard, NumberToken, Terrain, TileId, Topology};
 use std::collections::HashMap;
 
 pub struct Scenario {
