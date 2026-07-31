@@ -59,6 +59,10 @@ impl Topology {
         hexes
     }
 
+    pub fn standard() -> Topology{
+        Self::from_hexes(&Self::hexagon(2))
+    }
+
 
     // fn hexagon(radius : u8) -> Vec<Hex>{
     //     let mut hexes : HashSet<Hex> = HashSet::new();
