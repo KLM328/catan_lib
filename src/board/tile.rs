@@ -5,29 +5,23 @@ pub use token::NumberToken;
 use crate::resource::Resource;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DesertHasNoToken();
+pub enum TerrainTokenMismatch {
+    DesertHasNoToken,
+    MissingToken(Terrain),
+}
 
-impl fmt::Display for DesertHasNoToken {
+impl fmt::Display for TerrainTokenMismatch {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Un desert ne peut pas avoir de token")
+        match self {
+            Self::DesertHasNoToken => write!(f, "un désert ne peut pas porter de jeton"),
+            Self::MissingToken(t)  => write!(f, "{t:?} doit porter un jeton"),
+        }
     }
 }
-impl std::error::Error for DesertHasNoToken {}
+impl std::error::Error for TerrainTokenMismatch {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MissingToken(Terrain);
 
-impl fmt::Display for MissingToken {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?} n'a pas de token", self.0)
-    }
-}
-impl std::error::Error for MissingToken {}
-
-#[derive(Debug)]
-pub enum TerrainTokenMismatch { DesertHasNoToken, MissingToken(Terrain) }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Terrain { Desert, Forest, Mountain, Hills, Pasture, Fields }
 
 impl Terrain {

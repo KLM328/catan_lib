@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use crate::geometry::{Hex, HexCorner, HexDirection};
-use crate::{EdgeId, VertexId};
+use crate::{EdgeId, TileId, VertexId};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Topology{
     hexes: Vec<Hex>,
     tile_vertices: Vec<[VertexId; 6]>,
@@ -16,6 +17,28 @@ impl Topology {
     fn new() -> Topology{
         Topology{hexes: Vec::new(), tile_vertices: Vec::new(), tile_edges: Vec::new(), edges_endpoints : Vec::new(), vertex_count: 0, edge_count: 0}
     }
+    
+    pub fn hexes(&self) -> &[Hex] {
+        &self.hexes
+    }
+
+    pub fn tile_vertices(&self) -> &[[VertexId; 6]] {
+        &self.tile_vertices
+    }
+    pub fn tile_edges(&self) -> &[[EdgeId; 6]] {
+        &self.tile_edges
+    }
+
+    pub fn vertex_count(&self) -> usize {
+        self.vertex_count
+    }
+    pub fn edge_count(&self) -> usize {
+        self.edge_count
+    }
+    
+    
+    
+    
     pub fn from_hexes(hexes : &[Hex]) -> Topology{
         let mut topology = Topology::new();
         topology.hexes = hexes.to_vec();
@@ -56,38 +79,36 @@ impl Topology {
 
     }
 
-    pub fn hexes(&self) -> &[Hex] {
-        &self.hexes
-    }
+    
 
-    pub fn tile_vertices(&self) -> &[[VertexId; 6]] {
-        &self.tile_vertices
-    }
-    pub fn tile_edges(&self) -> &[[EdgeId; 6]] {
-        &self.tile_edges
-    }
-
-    pub fn vertex_count(&self) -> usize {
-        self.vertex_count
-    }
-    pub fn edge_count(&self) -> usize {
-        self.edge_count
-    }
-
-    pub fn hexagon(radius: i8) -> Vec<Hex> {
+    pub fn spiral(radius: i8) -> Vec<Hex> {
         let mut hexes = Vec::new();
-        for q in -radius..=radius {
-            for r in -radius..=radius {
-                if q.abs().max(r.abs()).max((q + r).abs()) <= radius {
-                    hexes.push(Hex::new(q, r));
+        for ring in (1..=radius).rev() {
+            let mut hex = Hex::new(-ring, ring);
+            for direction in HexDirection::ALL {
+                for _ in 0..ring {
+                    hexes.push(hex);
+                    hex = hex.neighbor(direction);
                 }
             }
         }
+        hexes.push(Hex::new(0, 0));
         hexes
     }
 
-    pub fn hexagonal(radius: i8) -> Topology {
-        Self::from_hexes(&Self::hexagon(radius))
+    pub fn adjacent_tile_pairs(&self) -> Vec<(TileId, TileId)> {
+        let mut owners: Vec<Vec<TileId>> = vec![Vec::new(); self.edge_count];
+
+        for (tile, edges) in self.tile_edges.iter().enumerate() {
+            for edge in edges {
+                owners[edge.value()].push(TileId::new(tile));
+            }
+        }
+
+        owners.iter()
+            .filter(|tiles| tiles.len() == 2)
+            .map(|tiles| (tiles[0], tiles[1]))
+            .collect()
     }
 
 
@@ -125,7 +146,7 @@ mod tests {
 
     #[test]
     fn test_from_hexes_radius_2() {
-        let hexes = Topology::hexagon(2);
+        let hexes = Topology::spiral(2);
         let topo = Topology::from_hexes(&hexes);
         assert_eq!(topo.tile_vertices.len(), 19);
         assert_eq!(topo.vertex_count, 54);
@@ -134,7 +155,7 @@ mod tests {
 
     #[test]
     fn test_from_hexes_radius_3() {
-        let hexes = Topology::hexagon(3);
+        let hexes = Topology::spiral(3);
         let topo = Topology::from_hexes(&hexes);
         assert_eq!(topo.tile_vertices.len(), 37);
         assert_eq!(topo.vertex_count, 96);
@@ -143,7 +164,7 @@ mod tests {
 
     #[test]
     fn test_hexagon_radius_2() {
-        let hexes = Topology::hexagon(2);
+        let hexes = Topology::spiral(2);
         println!("{:?}", hexes);
         assert_eq!(hexes.len(), 19);
 
@@ -151,14 +172,14 @@ mod tests {
 
     #[test]
     fn test_hexagon_radius_1() {
-        let hexes = Topology::hexagon(1);
+        let hexes = Topology::spiral(1);
         println!("{:?}", hexes);
         assert_eq!(hexes.len(), 7);
     }
 
     #[test]
     fn test_edges_endpoints() {
-        let hexes = Topology::hexagon(2);
+        let hexes = Topology::spiral(2);
         let topo = Topology::from_hexes(&hexes);
         assert_eq!(topo.edges_endpoints.len(), topo.edge_count());
         let topo = Topology::from_hexes(&[Hex::new(0, 0)]);
@@ -174,7 +195,7 @@ mod tests {
 
     #[test]
     fn every_vertex_has_two_or_three_edges() {
-        let topo = Topology::hexagonal(2);
+        let topo = Topology::from_hexes(&Topology::spiral(2));
         let mut degree = vec![0usize; topo.vertex_count()];
         for e in &topo.edges_endpoints {
             assert_ne!(e[0], e[1], "une arête ne peut pas relier un sommet à lui-même");
@@ -187,7 +208,7 @@ mod tests {
 
     #[test]
     fn every_tile_agrees_on_edge_endpoints() {
-        let topo = Topology::hexagonal(2);
+        let topo = Topology::from_hexes(&Topology::spiral(2));
         for (tile, edges) in topo.tile_edges().iter().enumerate() {
             let vertices = topo.tile_vertices()[tile];
             for dir in 0..6 {
@@ -196,6 +217,20 @@ mod tests {
                 assert_eq!(topo.edges_endpoints[edges[dir].value()], expected,
                            "tuile {tile}, direction {dir}");
             }
+        }
+    }
+
+    #[test]
+    fn adjacent_pairs_match_hex_geometry() {
+        let topo = Topology::from_hexes(&Topology::spiral(2));
+        let pairs = topo.adjacent_tile_pairs();
+
+        assert_eq!(pairs.len(), 42);
+
+        for (a, b) in pairs {
+            let (ha, hb) = (topo.hexes()[a.value()], topo.hexes()[b.value()]);
+            assert!(HexDirection::ALL.into_iter().any(|d| ha.neighbor(d) == hb),
+                    "{ha:?} et {hb:?} ne sont pas voisins");
         }
     }
 }
