@@ -171,6 +171,14 @@ impl Board {
         }
     }
 
+    pub fn can_place_road(&self, game_status: GameStatus, edge: VertexId, player: PlayerId) -> bool {
+        todo!()
+    }
+
+    pub fn place_road(&self, game_status: GameStatus, edge: VertexId, player: PlayerId) -> Result<(), InvalidAction> {
+        todo!()
+    }
+
     pub fn place_building(
         &mut self,
         game_status: GameStatus,
