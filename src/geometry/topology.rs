@@ -1,3 +1,4 @@
+use std::cmp::PartialEq;
 use std::collections::HashMap;
 use crate::geometry::{Hex, HexCorner, HexDirection};
 use crate::{EdgeId, TileId, VertexId};
@@ -17,7 +18,7 @@ impl Topology {
     fn new() -> Topology{
         Topology{hexes: Vec::new(), tile_vertices: Vec::new(), tile_edges: Vec::new(), edges_endpoints : Vec::new(), vertex_count: 0, edge_count: 0}
     }
-    
+
     pub fn hexes(&self) -> &[Hex] {
         &self.hexes
     }
@@ -28,17 +29,24 @@ impl Topology {
     pub fn tile_edges(&self) -> &[[EdgeId; 6]] {
         &self.tile_edges
     }
-
     pub fn vertex_count(&self) -> usize {
         self.vertex_count
     }
     pub fn edge_count(&self) -> usize {
         self.edge_count
     }
-    
-    
-    
-    
+    pub fn edges_endpoints(&self) -> &[[VertexId; 2]] {
+        &self.edges_endpoints
+    }
+
+    pub fn vertex_neighbors(&self, vertex_id : VertexId) -> Vec<VertexId> {
+        self.edges_endpoints.iter().filter(|[a, b]| *a == vertex_id || *b == vertex_id ).map(|[a, b]| if *a == vertex_id { *b } else { *a }).collect::<Vec<VertexId>>()
+    }
+
+    pub fn connected_edges(&self, vertex_id : VertexId) -> Vec<EdgeId> {
+        self.edges_endpoints.iter().enumerate().filter(|(_, [a, b])| *a == vertex_id || *b == vertex_id ).map(|(index, _)| EdgeId::new(index)).collect::<Vec<EdgeId>>()
+    }
+
     pub fn from_hexes(hexes : &[Hex]) -> Topology{
         let mut topology = Topology::new();
         topology.hexes = hexes.to_vec();
@@ -79,7 +87,7 @@ impl Topology {
 
     }
 
-    
+
 
     pub fn spiral(radius: i8) -> Vec<Hex> {
         let mut hexes = Vec::new();
@@ -232,5 +240,22 @@ mod tests {
             assert!(HexDirection::ALL.into_iter().any(|d| ha.neighbor(d) == hb),
                     "{ha:?} et {hb:?} ne sont pas voisins");
         }
+    }
+
+    #[test]
+    fn test_vertex_neighbors() {
+        let topo = Topology::from_hexes(&Topology::spiral(2));
+
+        let mut neighbors = topo.vertex_neighbors(VertexId::new(0));
+        neighbors.sort();
+        assert_eq!(neighbors, vec![VertexId::new(1), VertexId::new(5), VertexId::new(7)]);
+    }
+
+    #[test]
+    fn test_connected_edges() {
+        let topo = Topology::from_hexes(&Topology::spiral(2));
+        let mut edges = topo.connected_edges(VertexId::new(0));
+        edges.sort();
+        assert_eq!(edges, vec![EdgeId::new(0), EdgeId::new(1), EdgeId::new(8)]);
     }
 }
