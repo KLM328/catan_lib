@@ -3,7 +3,6 @@ use std::collections::HashMap;
 
 pub struct Scenario {
     topology: Topology,
-    hexes: Vec<Hex>,
     terrain_bag: Vec<Terrain>,
     token_sequence: Vec<NumberToken>,
 }
@@ -14,7 +13,6 @@ impl Scenario {
 
         Scenario {
             topology: Topology::from_hexes(&hexes),
-            hexes,
             terrain_bag: vec![
                 Terrain::Desert,
                 Terrain::Pasture,
@@ -97,7 +95,6 @@ mod tests {
     #[test]
     fn test_scenario_standard() {
         let scenario = Scenario::standard();
-        assert_eq!(scenario.hexes.len(), 19);
         assert_eq!(scenario.terrain_bag.len(), 19);
         assert_eq!(scenario.token_sequence.len(), 18);
 
