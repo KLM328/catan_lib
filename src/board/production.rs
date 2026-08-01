@@ -16,7 +16,6 @@ pub struct Production {
 impl Production {
     pub(crate) fn add_gain(&mut self, gain: Gain) { self.gains.push(gain) }
     pub(crate) fn gains(&self) -> &[Gain] { &self.gains }
-    pub(crate) fn is_empty(&self) -> bool { self.gains.is_empty() }
 }
 
 #[cfg(test)]
@@ -33,8 +32,7 @@ mod tests {
     #[test]
     fn test_production_is_empty() {
         let production = Production::default();
-        assert!(production.is_empty());
-    }
+        assert!(production.gains.is_empty());    }
 
     #[test]
     fn test_production_gains() {

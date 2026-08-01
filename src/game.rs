@@ -1,4 +1,3 @@
-use crate::player::PlayerColor::{Blue, Red};
 use crate::{
     Board, Cost, EdgeId, InvalidAction, InvalidBoard, NotEnoughResources, Player, PlayerId,
     Production, Roll, Scenario, Terrain, VertexId,
@@ -196,11 +195,12 @@ mod tests {
     use crate::board::BuildingKind::{City, Settlement};
     use crate::board::tests::init_board;
     use crate::{Building, Resource, ResourceCounts};
+    use crate::player::PlayerColor;
 
     fn init_game() -> Game {
         let scenario = Scenario::test_scenario();
         let terrains = scenario.terrains().to_vec();
-        let mut game = Game::new(scenario, vec![Player::new(Blue), Player::new(Red)]);
+        let mut game = Game::new(scenario, vec![Player::new(PlayerColor::Blue), Player::new(PlayerColor::Red)]);
 
         game.start(&terrains).unwrap();
         game.set_status(GameStatus::Placement);
