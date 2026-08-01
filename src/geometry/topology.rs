@@ -87,8 +87,6 @@ impl Topology {
 
     }
 
-
-
     pub fn spiral(radius: i8) -> Vec<Hex> {
         let mut hexes = Vec::new();
         for ring in (1..=radius).rev() {
@@ -128,23 +126,6 @@ impl Topology {
         hexes.push(hexes[0].neighbor(HexDirection::new(1).unwrap()));
         Topology::from_hexes(&hexes)
     }
-
-
-    // fn hexagon(radius : u8) -> Vec<Hex>{
-    //     let mut hexes : HashSet<Hex> = HashSet::new();
-    //     hexes.insert(Hex{q: 0, r: 0});
-    //     for _ in 0..radius {
-    //         let mut temp : HashSet<Hex> = HashSet::new();
-    //         for hex in hexes.iter() {
-    //             DIRS.iter().enumerate().for_each(|(i, _)| {temp.insert(hex.neighbor(i));});
-    //         }
-    //         for hex in temp.iter() {
-    //             hexes.insert(hex.clone());
-    //         }
-    //
-    //     }
-    //     hexes.into_iter().collect::<Vec<Hex>>()
-    // }
 }
 
 #[cfg(test)]
