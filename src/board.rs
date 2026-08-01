@@ -340,7 +340,7 @@ impl Board {
     }
 
     pub(crate) fn can_upgrade_settlement_to_city(
-        &mut self,
+        &self,
         vertex: VertexId,
         player: PlayerId,
     ) -> Result<(), InvalidAction> {
