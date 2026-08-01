@@ -26,12 +26,8 @@ impl Game {
             _ => RollOutcome::Production(self.board.production(roll))
         };
 
-        match &outcome {
-            RollOutcome::RobberActivated{must_discard : _ } => {},
-            RollOutcome::Production(production) => {
-                production.gains().iter().for_each(|gain| self.players[gain.player.id()].receive(gain.resource, gain.amount));
-            }
-
+        if let RollOutcome::Production(production) = &outcome {
+            production.gains().iter().for_each(|gain| self.players[gain.player.id()].receive(gain.resource, gain.amount));
         }
 
         outcome
