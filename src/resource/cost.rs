@@ -4,7 +4,7 @@ pub struct Cost(ResourceCounts);
 
 impl Cost {
     
-    pub fn resources(&self) -> ResourceCounts {
+    pub(crate) fn resources(&self) -> ResourceCounts {
         self.0
     }
 

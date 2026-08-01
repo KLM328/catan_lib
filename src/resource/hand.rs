@@ -16,26 +16,26 @@ impl std::error::Error for NotEnoughResources {}
 pub struct Hand(ResourceCounts);
 
 impl Hand {
-    pub fn pay(&mut self, cost: &Cost) -> Result<(), NotEnoughResources> {
+    pub(crate) fn pay(&mut self, cost: &Cost) -> Result<(), NotEnoughResources> {
         if !self.0.try_subtract(&cost.resources()) {
             return Err(NotEnoughResources);
         }
         Ok(())
     }
 
-    pub fn can_pay(&self, cost: &Cost) -> bool {
+    pub(crate) fn can_pay(&self, cost: &Cost) -> bool {
         self.0.covers(&cost.resources())
     }
 
-    pub fn resources(&self) -> ResourceCounts {
+    pub(crate) fn resources(&self) -> ResourceCounts {
         self.0
     }
 
-    pub fn count(&self) -> u8 {
+    pub(crate) fn count(&self) -> u8 {
         self.0.count()
     }
 
-    pub fn add(&mut self, resource : Resource, amount : u8){
+    pub(crate) fn add(&mut self, resource : Resource, amount : u8){
         self.0.add(resource, amount);
     }
 

@@ -26,7 +26,7 @@ impl std::error::Error for InvalidDirection {}
 pub struct HexDirection(usize);
 
 impl HexDirection {
-    pub fn new(dir : usize) -> Result<HexDirection, InvalidDirection> {
+    pub(crate) fn new(dir : usize) -> Result<HexDirection, InvalidDirection> {
         if matches!(dir, 0..=5) {
             Ok(HexDirection(dir))
         }else{
@@ -36,7 +36,7 @@ impl HexDirection {
 
     pub const ALL : [HexDirection; 6] = [HexDirection(0), HexDirection(1), HexDirection(2), HexDirection(3), HexDirection(4), HexDirection(5)];
 
-    pub fn value(self) -> usize {
+    pub(crate) fn value(self) -> usize {
         self.0
     }
 }

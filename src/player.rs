@@ -11,11 +11,11 @@ pub enum PlayerColor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayerId(usize);
 impl PlayerId {
-    pub fn new(id: usize) -> Self {
+    pub(crate) fn new(id: usize) -> Self {
         Self(id)
     }
 
-    pub fn id(self) -> usize {
+    pub(crate) fn id(self) -> usize {
         self.0
     }
 }
@@ -26,22 +26,22 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(color: PlayerColor) -> Self {
+    pub(crate) fn new(color: PlayerColor) -> Self {
         Self {
             color,
             hand: Hand::default(),
         }
     }
 
-    pub fn color(&self) -> PlayerColor {
+    pub(crate) fn color(&self) -> PlayerColor {
         self.color
     }
 
-    pub fn hand(&self) -> &Hand {
+    pub(crate) fn hand(&self) -> &Hand {
         &self.hand
     }
 
-    pub fn receive(&mut self, resource : Resource, amount : u8){
+    pub(crate) fn receive(&mut self, resource : Resource, amount : u8){
         self.hand.add(resource, amount);
     }
 }

@@ -16,7 +16,7 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub fn index(self) -> usize { 
+    pub(crate) fn index(self) -> usize {
         match self {
             Resource::Wood => 0,
             Resource::Stone => 1,

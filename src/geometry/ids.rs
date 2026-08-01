@@ -2,10 +2,10 @@
 pub struct TileId(usize);
 
 impl TileId {
-    pub fn new(index: usize) -> TileId {
+    pub(crate) fn new(index: usize) -> TileId {
         TileId(index)
     }
-    pub fn value(&self) -> usize {
+    pub(crate) fn value(&self) -> usize {
         self.0
     }
 }
@@ -13,11 +13,11 @@ impl TileId {
 pub struct VertexId(usize);
 
 impl VertexId {
-    pub fn new(index: usize) -> VertexId {
+    pub(crate) fn new(index: usize) -> VertexId {
         VertexId(index)
     }
 
-    pub fn value(&self) -> usize {
+    pub(crate) fn value(&self) -> usize {
         self.0
     }
 }
@@ -32,7 +32,7 @@ impl EdgeId {
 }
 
 impl EdgeId {
-    pub fn new(index: usize) -> EdgeId {
+    pub(crate) fn new(index: usize) -> EdgeId {
         EdgeId(index)
     }
 }

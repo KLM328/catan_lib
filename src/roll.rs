@@ -18,11 +18,11 @@ pub struct Roll {
     dice2: u8,
 }
 impl Roll {
-    pub fn value(self) -> u8 {
+    pub(crate) fn value(self) -> u8 {
         self.dice1 + self.dice2
     }
 
-    pub fn new(dice1: u8, dice2: u8) -> Result<Self, InvalidDices> {
+    pub(crate) fn new(dice1: u8, dice2: u8) -> Result<Self, InvalidDices> {
         if matches!(dice1, 1..=6) && matches!(dice2, 1..=6) {
             Ok(Self { dice1, dice2 })
         } else {
@@ -30,7 +30,7 @@ impl Roll {
         }
     }
 
-    pub fn random() -> Self {
+    pub(crate) fn random() -> Self {
         let mut rng = rand::rng();
         Self::new(rng.random_range(1..=6), rng.random_range(1..=6)).unwrap()
     }

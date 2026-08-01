@@ -15,7 +15,7 @@ impl fmt::Display for InvalidNumberToken {
 impl std::error::Error for InvalidNumberToken {}
 
 impl NumberToken {
-    pub fn new(n: u8) -> Result<Self, InvalidNumberToken> {
+    pub(crate) fn new(n: u8) -> Result<Self, InvalidNumberToken> {
         if matches!(n, 2..=6 | 8..=12) {
             Ok(Self(n))
         } else {
@@ -23,7 +23,7 @@ impl NumberToken {
         }
     }
 
-    pub fn value(self) -> u8 {
+    pub(crate) fn value(self) -> u8 {
         self.0
     }
 }

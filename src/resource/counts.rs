@@ -7,23 +7,23 @@ impl ResourceCounts {
     pub const fn new(counts: [u8; 5]) -> Self {
         Self(counts)
     }
-    pub fn amount(&self, r: Resource) -> u8 {
+    pub(crate) fn amount(&self, r: Resource) -> u8 {
         self.0[r.index()]
     }
-    pub fn add(&mut self, r: Resource, n: u8) {
+    pub(crate) fn add(&mut self, r: Resource, n: u8) {
         self.0[r.index()] += n;
     }
-    pub fn count(&self) -> u8 {
+    pub(crate) fn count(&self) -> u8 {
         self.0.iter().copied().sum()
     }
 
-    pub fn covers(&self, other: &Self) -> bool {
+    pub(crate) fn covers(&self, other: &Self) -> bool {
         self.0
             .iter()
             .zip(other.0.iter())
             .all(|(mine, needed)| mine >= needed)
     }
-    pub fn try_subtract(&mut self, other: &Self) -> bool {
+    pub(crate) fn try_subtract(&mut self, other: &Self) -> bool {
         if self.covers(other) {
             for (mine, taken) in self.0.iter_mut().zip(other.0.iter()) {
                 *mine -= taken;

@@ -99,7 +99,7 @@ pub struct Board {
     robber: TileId,
 }
 impl Board {
-    pub fn new(
+    pub(crate) fn new(
         topology: Topology,
         tiles: Vec<Tile>,
         robber: TileId,
@@ -122,19 +122,19 @@ impl Board {
         }
     }
 
-    pub fn robber(&self) -> TileId {
+    pub(crate) fn robber(&self) -> TileId {
         self.robber
     }
 
-    pub fn tiles(&self) -> &[Tile] {
+    pub(crate) fn tiles(&self) -> &[Tile] {
         &self.tiles
     }
 
-    pub fn topology(&self) -> &Topology {
+    pub(crate) fn topology(&self) -> &Topology {
         &self.topology
     }
 
-    pub fn production(&self, roll: Roll) -> Production {
+    pub(crate) fn production(&self, roll: Roll) -> Production {
         let mut production = Production::default();
 
         for (index, tile) in self.tiles.iter().enumerate() {
@@ -161,7 +161,7 @@ impl Board {
         production
     }
 
-    pub fn can_place_building(
+    pub(crate) fn can_place_building(
         &self,
         game_status: GameStatus,
         vertex: VertexId,
@@ -180,7 +180,7 @@ impl Board {
         }
     }
 
-    pub fn can_place_road(&self, game_status: GameStatus, edge: EdgeId, player: PlayerId) -> bool {
+    pub(crate) fn can_place_road(&self, game_status: GameStatus, edge: EdgeId, player: PlayerId) -> bool {
         if let Some(target_edge) = self.roads.get(edge.value()) {
             if target_edge.is_some() {
                 false
@@ -234,7 +234,7 @@ impl Board {
 
     }
 
-    pub fn place_road(
+    pub(crate) fn place_road(
         &mut self,
         game_status: GameStatus,
         edge: EdgeId,
@@ -252,7 +252,7 @@ impl Board {
         }
     }
 
-    pub fn place_building(
+    pub(crate) fn place_building(
         &mut self,
         game_status: GameStatus,
         vertex: VertexId,
@@ -267,7 +267,7 @@ impl Board {
         }
     }
 
-    pub fn move_robber(&mut self, tile_id: TileId) -> Result<(), InvalidAction> {
+    pub(crate) fn move_robber(&mut self, tile_id: TileId) -> Result<(), InvalidAction> {
         let option_tile = self.tiles.get(tile_id.value());
         match option_tile {
             Some(tile) => {
@@ -282,7 +282,7 @@ impl Board {
         }
     }
 
-    pub fn upgrade_settlement(
+    pub(crate) fn upgrade_settlement(
         &mut self,
         vertex: VertexId,
         player: PlayerId,
@@ -313,7 +313,7 @@ pub mod tests {
     use crate::player::PlayerId;
     use crate::resource::Resource;
 
-    pub fn init_board_without_buildings() -> Board {
+    pub(crate) fn init_board_without_buildings() -> Board {
         let topology = Topology::test_topology();
         Board::new(
             topology,
@@ -327,7 +327,7 @@ pub mod tests {
         .unwrap()
     }
 
-    pub fn init_board() -> Board {
+    pub(crate) fn init_board() -> Board {
         let mut board = init_board_without_buildings();
         board
             .place_building(

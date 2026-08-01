@@ -27,7 +27,7 @@ pub enum Terrain { Desert, Forest, Mountain, Hills, Pasture, Fields }
 impl Terrain {
 
     pub const ALL: [Terrain; 6] = [Terrain::Desert, Terrain::Forest, Terrain::Mountain, Terrain::Hills, Terrain::Pasture, Terrain::Fields];
-    pub fn into_tile(self, token: Option<NumberToken>) -> Result<Tile, TerrainTokenMismatch> {
+    pub(crate) fn into_tile(self, token: Option<NumberToken>) -> Result<Tile, TerrainTokenMismatch> {
         match (self, token) {
             (Terrain::Desert, None) => Ok(Tile::Desert),
             (Terrain::Desert, Some(_)) => Err(TerrainTokenMismatch::DesertHasNoToken),
@@ -39,7 +39,7 @@ impl Terrain {
             (Terrain::Fields, Some(n)) => Ok(Tile::Fields(n)),
         }
     }
-    pub fn resource(self) -> Option<Resource> {
+    pub(crate) fn resource(self) -> Option<Resource> {
         match self {
             Terrain::Desert => None,
             Terrain::Forest => Some(Resource::Wood),
@@ -64,7 +64,7 @@ pub enum Tile {
 
 
 impl Tile {
-    pub fn terrain(self) -> Terrain{
+    pub(crate) fn terrain(self) -> Terrain{
         match self {
             Tile::Desert => Terrain::Desert,
             Tile::Forest(_) => Terrain::Forest,
@@ -74,11 +74,11 @@ impl Tile {
             Tile::Fields(_) => Terrain::Fields,
         }
     }
-    pub fn resource(self) -> Option<Resource> {
+    pub(crate) fn resource(self) -> Option<Resource> {
         self.terrain().resource()
     }
 
-    pub fn number(self) -> Option<NumberToken> {
+    pub(crate) fn number(self) -> Option<NumberToken> {
         match self {
             Tile::Forest(n) => Some(n),
             Tile::Mountain(n) => Some(n),

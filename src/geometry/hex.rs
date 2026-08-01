@@ -17,7 +17,7 @@ pub struct HexCorner(usize);
 impl HexCorner {
     pub const ALL: [HexCorner; 6] = [HexCorner(0), HexCorner(1), HexCorner(2),
         HexCorner(3), HexCorner(4), HexCorner(5)];
-    pub fn new(corner : usize) -> Result<HexCorner, InvalidHexCorner> {
+    pub(crate) fn new(corner : usize) -> Result<HexCorner, InvalidHexCorner> {
         if matches!(corner, 0..=5) {
             Ok(HexCorner(corner))
         }else{
@@ -25,7 +25,7 @@ impl HexCorner {
         }
     }
 
-    pub fn value(self) -> usize {
+    pub(crate) fn value(self) -> usize {
         self.0
     }
 }
@@ -37,21 +37,21 @@ pub struct Hex {
 }
 
 impl Hex {
-    pub fn new(q: i8, r: i8) -> Hex {
+    pub(crate) fn new(q: i8, r: i8) -> Hex {
         Hex{q, r}
     }
 
-    pub fn neighbor(self, dir : HexDirection) -> Hex{
+    pub(crate) fn neighbor(self, dir : HexDirection) -> Hex{
         Hex::new(self.q + DIRS[dir.0].0, self.r + DIRS[dir.0].1)
     }
 
-    pub fn corner_hexes(self, corner : HexCorner) -> [Hex; 3] {
+    pub(crate) fn corner_hexes(self, corner : HexCorner) -> [Hex; 3] {
         let mut hexes = [self, self.neighbor(HexDirection::new(corner.0).unwrap()), self.neighbor(HexDirection::new((corner.0 + 1) % 6).unwrap())];
         hexes.sort();
         hexes
     }
     
-    pub fn edge_hexes(self, dir : HexDirection) -> [Hex; 2] {
+    pub(crate) fn edge_hexes(self, dir : HexDirection) -> [Hex; 2] {
         let mut hexes = [self, self.neighbor(dir)];
         hexes.sort();
         hexes

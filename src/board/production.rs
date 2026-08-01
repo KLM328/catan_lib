@@ -14,9 +14,9 @@ pub struct Production {
 }
 
 impl Production {
-    pub fn add_gain(&mut self, gain: Gain) { self.gains.push(gain) }
-    pub fn gains(&self) -> &[Gain] { &self.gains }
-    pub fn is_empty(&self) -> bool { self.gains.is_empty() }
+    pub(crate) fn add_gain(&mut self, gain: Gain) { self.gains.push(gain) }
+    pub(crate) fn gains(&self) -> &[Gain] { &self.gains }
+    pub(crate) fn is_empty(&self) -> bool { self.gains.is_empty() }
 }
 
 #[cfg(test)]

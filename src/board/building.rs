@@ -4,20 +4,20 @@ use crate::player::PlayerId;
 pub struct Building { kind: BuildingKind, owner: PlayerId }
 
 impl Building {
-    pub fn new(kind: BuildingKind, owner: PlayerId) -> Self {
+    pub(crate) fn new(kind: BuildingKind, owner: PlayerId) -> Self {
         Self { kind, owner }
     }
     
-    pub fn kind(&self) -> BuildingKind { self.kind }
+    pub(crate) fn kind(&self) -> BuildingKind { self.kind }
 
-    pub fn owner(&self) -> PlayerId { self.owner } 
+    pub(crate) fn owner(&self) -> PlayerId { self.owner } 
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 
 pub enum BuildingKind { Settlement, City }
 
 impl BuildingKind {
-    pub fn amount(&self) -> u8 {
+    pub(crate) fn amount(&self) -> u8 {
         match self { BuildingKind::Settlement => 1, BuildingKind::City => 2 }
     }
 }

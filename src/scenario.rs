@@ -8,7 +8,7 @@ pub struct Scenario {
 }
 
 impl Scenario {
-    pub fn standard() -> Scenario {
+    pub(crate) fn standard() -> Scenario {
         let hexes = Topology::spiral(2);
 
         Scenario {
@@ -44,7 +44,7 @@ impl Scenario {
         }
     }
 
-    pub fn layout(&self, shuffled: &[Terrain]) -> Result<Board, InvalidBoard> {
+    pub(crate) fn layout(&self, shuffled: &[Terrain]) -> Result<Board, InvalidBoard> {
         if shuffled.len() != self.terrain_bag.len() {
             return Err(InvalidBoard::WrongTileCount {
                 expected: self.terrain_bag.len(),

@@ -19,35 +19,35 @@ impl Topology {
         Topology{hexes: Vec::new(), tile_vertices: Vec::new(), tile_edges: Vec::new(), edges_endpoints : Vec::new(), vertex_count: 0, edge_count: 0}
     }
 
-    pub fn hexes(&self) -> &[Hex] {
+    pub(crate) fn hexes(&self) -> &[Hex] {
         &self.hexes
     }
 
-    pub fn tile_vertices(&self) -> &[[VertexId; 6]] {
+    pub(crate) fn tile_vertices(&self) -> &[[VertexId; 6]] {
         &self.tile_vertices
     }
-    pub fn tile_edges(&self) -> &[[EdgeId; 6]] {
+    pub(crate) fn tile_edges(&self) -> &[[EdgeId; 6]] {
         &self.tile_edges
     }
-    pub fn vertex_count(&self) -> usize {
+    pub(crate) fn vertex_count(&self) -> usize {
         self.vertex_count
     }
-    pub fn edge_count(&self) -> usize {
+    pub(crate) fn edge_count(&self) -> usize {
         self.edge_count
     }
-    pub fn edges_endpoints(&self) -> &[[VertexId; 2]] {
+    pub(crate) fn edges_endpoints(&self) -> &[[VertexId; 2]] {
         &self.edges_endpoints
     }
 
-    pub fn vertex_neighbors(&self, vertex_id : VertexId) -> Vec<VertexId> {
+    pub(crate) fn vertex_neighbors(&self, vertex_id : VertexId) -> Vec<VertexId> {
         self.edges_endpoints.iter().filter(|[a, b]| *a == vertex_id || *b == vertex_id ).map(|[a, b]| if *a == vertex_id { *b } else { *a }).collect::<Vec<VertexId>>()
     }
 
-    pub fn connected_edges(&self, vertex_id : VertexId) -> Vec<EdgeId> {
+    pub(crate) fn connected_edges(&self, vertex_id : VertexId) -> Vec<EdgeId> {
         self.edges_endpoints.iter().enumerate().filter(|(_, [a, b])| *a == vertex_id || *b == vertex_id ).map(|(index, _)| EdgeId::new(index)).collect::<Vec<EdgeId>>()
     }
 
-    pub fn from_hexes(hexes : &[Hex]) -> Topology{
+    pub(crate) fn from_hexes(hexes : &[Hex]) -> Topology{
         let mut topology = Topology::new();
         topology.hexes = hexes.to_vec();
         let mut vertices: HashMap<[Hex; 3], VertexId> = HashMap::new();
@@ -87,7 +87,7 @@ impl Topology {
 
     }
 
-    pub fn spiral(radius: i8) -> Vec<Hex> {
+    pub(crate) fn spiral(radius: i8) -> Vec<Hex> {
         let mut hexes = Vec::new();
         for ring in (1..=radius).rev() {
             let mut hex = Hex::new(-ring, ring);
@@ -102,7 +102,7 @@ impl Topology {
         hexes
     }
 
-    pub fn adjacent_tile_pairs(&self) -> Vec<(TileId, TileId)> {
+    pub(crate) fn adjacent_tile_pairs(&self) -> Vec<(TileId, TileId)> {
         let mut owners: Vec<Vec<TileId>> = vec![Vec::new(); self.edge_count];
 
         for (tile, edges) in self.tile_edges.iter().enumerate() {
@@ -119,7 +119,7 @@ impl Topology {
 
 
     #[cfg(test)]
-    pub fn test_topology() -> Topology{
+    pub(crate) fn test_topology() -> Topology{
         let mut hexes = Vec::new();
         hexes.push(Hex::new(0, 0));
         hexes.push(hexes[0].neighbor(HexDirection::new(0).unwrap()));
