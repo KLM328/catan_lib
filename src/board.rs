@@ -1,4 +1,4 @@
-use crate::PlayerId;
+use crate::{EdgeId, PlayerId};
 use crate::{Roll, TileId, Topology, VertexId};
 use std::fmt;
 
@@ -179,7 +179,7 @@ impl Board {
     pub fn can_place_road(
         &self,
         game_status: GameStatus,
-        edge: VertexId,
+        edge: EdgeId,
         player: PlayerId,
     ) -> bool {
         todo!()
@@ -188,7 +188,7 @@ impl Board {
     pub fn place_road(
         &self,
         game_status: GameStatus,
-        edge: VertexId,
+        edge: EdgeId,
         player: PlayerId,
     ) -> Result<(), InvalidAction> {
         todo!()
@@ -288,6 +288,8 @@ pub mod tests {
             )
             .unwrap();
         board.move_robber(TileId::new(1)).unwrap();
+
+        board.place_road(GameStatus::Placement, EdgeId::new(5), PlayerId::new(1)).unwrap();
         board
     }
 
@@ -370,4 +372,91 @@ pub mod tests {
                 .is_err()
         );
     }
+
+    #[test]
+    fn test_upgrade_settlement_ko_wrong_kind() {
+        let mut board = init_board();
+        assert!(
+            board
+                .upgrade_settlement(VertexId::new(4), PlayerId::new(1))
+                .is_err()
+        )
+    }
+
+    #[test]
+    fn test_can_place_road_during_placement_ok() {
+        let mut board = init_board();
+        assert!(board.can_place_road(GameStatus::Placement, EdgeId::new(9), PlayerId::new(1)));
+        assert!(board.can_place_road(GameStatus::Placement, EdgeId::new(10), PlayerId::new(1)));
+    }
+
+    #[test]
+    fn test_can_place_road_during_placement_ko() {
+        let mut board = init_board();
+        assert!(!board.can_place_road(GameStatus::Placement, EdgeId::new(9), PlayerId::new(0)));
+        assert!(!board.can_place_road(GameStatus::Placement, EdgeId::new(6), PlayerId::new(1)));
+    }
+
+    #[test]
+    fn test_can_place_road_during_placement_ko_two_road_to_the_same_building() {
+        let mut board = init_board();
+        assert!(!board.can_place_road(GameStatus::Placement, EdgeId::new(4), PlayerId::new(1)));
+    }
+
+    #[test]
+    fn test_can_place_road_during_placement_ko_second_road_consecutive_to_first_road() {
+        let mut board = init_board();
+        assert!(!board.can_place_road(GameStatus::Placement, EdgeId::new(0), PlayerId::new(1)));
+        assert!(!board.can_place_road(GameStatus::Placement, EdgeId::new(9), PlayerId::new(1)));
+    }
+
+    #[test]
+    fn test_can_place_road_during_playing_ko() {
+        let mut board = init_board();
+        assert!(!board.can_place_road(GameStatus::Playing, EdgeId::new(13), PlayerId::new(1)));
+    }
+
+    #[test]
+    fn test_can_place_road_during_playing_ok() {
+        let mut board = init_board();
+        assert!(board.can_place_road(GameStatus::Playing, EdgeId::new(9), PlayerId::new(1)));
+        assert!(board.can_place_road(GameStatus::Playing, EdgeId::new(4), PlayerId::new(1)));
+        assert!(board.can_place_road(GameStatus::Playing, EdgeId::new(10), PlayerId::new(1)));
+    }
+
+    #[test]
+    fn test_place_road_during_playing_ok() {
+        let mut board = init_board();
+        board.place_road(GameStatus::Playing, EdgeId::new(9), PlayerId::new(1)).unwrap();
+        board.place_road(GameStatus::Playing, EdgeId::new(10), PlayerId::new(1)).unwrap();
+        assert_eq!(board.roads[9].unwrap(), PlayerId::new(1));
+        assert_eq!(board.roads[10].unwrap(), PlayerId::new(1));
+    }
+
+    #[test]
+    fn test_place_road_during_playing_ko() {
+        let mut board = init_board();
+        assert!(board.place_road(GameStatus::Playing, EdgeId::new(3), PlayerId::new(1)).is_err());
+        assert!(board.place_road(GameStatus::Playing, EdgeId::new(7), PlayerId::new(1)).is_err());
+        assert_eq!(board.roads[3], None);
+        assert_eq!(board.roads[7], None);
+    }
+
+    #[test]
+    fn test_place_road_during_placement_ko() {
+        let mut board = init_board();
+        assert!(board.place_road(GameStatus::Placement, EdgeId::new(9), PlayerId::new(1)).is_err());
+        assert!(board.place_road(GameStatus::Placement, EdgeId::new(4), PlayerId::new(1)).is_err());
+        assert_eq!(board.roads[9], None);
+        assert_eq!(board.roads[4], None);
+    }
+
+    #[test]
+    fn test_place_road_during_placement_ok() {
+        let mut board = init_board();
+        assert!(board.place_road(GameStatus::Placement, EdgeId::new(10), PlayerId::new(1)).is_ok());
+        assert_eq!(board.roads[10].unwrap(), PlayerId::new(1));
+    }
+
+
 }
