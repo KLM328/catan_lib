@@ -12,6 +12,7 @@ pub enum GameError {
     PlayerNotFound(PlayerId),
     GameOver,
     GameIsStarting,
+    GameIsNotPlaying,
 }
 
 impl From<InvalidAction> for GameError {
@@ -173,15 +174,18 @@ impl Game {
     ) -> Result<(), GameError> {
         self.playable_status()?;
         self.check_player(player_id)?;
+        if matches!(self.status, GameStatus::Playing) {
+            self.board_mut()?
+                .can_upgrade_settlement_to_city(vertex, player_id)?;
 
-        self.board_mut()?
-            .can_upgrade_settlement_to_city(vertex, player_id)?;
+            self.get_player_mut(player_id)?.pay(&Cost::CITY)?;
 
-        self.get_player_mut(player_id)?.pay(&Cost::CITY)?;
-
-        self.board_mut()?
-            .upgrade_settlement_to_city(vertex, player_id)?;
-        Ok(())
+            self.board_mut()?
+                .upgrade_settlement_to_city(vertex, player_id)?;
+            Ok(())
+        } else {
+            Err(GameError::GameIsNotPlaying)
+        }
     }
 }
 
@@ -209,10 +213,13 @@ mod tests {
         game.build_settlement(PlayerId::new(1), VertexId::new(8))
             .unwrap();
         game.build_road(PlayerId::new(1), EdgeId::new(5)).unwrap();
+
+        game.set_status(GameStatus::Playing);
         game.players[1].receive(Resource::Wheat, 2);
         game.players[1].receive(Resource::Stone, 3);
         game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(4))
             .unwrap();
+        game.set_status(GameStatus::Placement);
 
         game
     }
@@ -371,6 +378,10 @@ mod tests {
     #[test]
     fn test_upgrade_settlement_to_city() {
         let mut game = init_game();
+        assert_eq!(
+            game.upgrade_settlement_to_city(PlayerId::new(0), VertexId::new(8)),
+            Err(GameError::GameIsNotPlaying)
+        );
         game.set_status(GameStatus::Playing);
         assert_eq!(
             game.upgrade_settlement_to_city(PlayerId::new(18), VertexId::new(8)),
