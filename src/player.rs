@@ -1,4 +1,4 @@
-use crate::{Hand, Resource};
+use crate::{Hand, NotEnoughResources, Resource};
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum PlayerColor {
@@ -15,7 +15,7 @@ impl PlayerId {
         Self(id)
     }
 
-    pub(crate) fn id(self) -> usize {
+    pub(crate) fn value(self) -> usize {
         self.0
     }
 }
@@ -43,6 +43,10 @@ impl Player {
 
     pub(crate) fn receive(&mut self, resource : Resource, amount : u8){
         self.hand.add(resource, amount);
+    }
+
+    pub(crate) fn pay(&mut self, cost : &crate::Cost) -> Result<(), NotEnoughResources> {
+        self.hand.pay(cost)
     }
 }
 

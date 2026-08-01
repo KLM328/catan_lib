@@ -3,8 +3,8 @@ mod hand;
 mod counts;
 
 pub use cost::Cost;
-pub use hand::Hand;
-pub use counts::ResourceCounts; 
+pub use hand::{Hand, NotEnoughResources};
+pub use counts::ResourceCounts;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Resource {

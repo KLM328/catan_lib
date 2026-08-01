@@ -8,6 +8,9 @@ pub struct Scenario {
 }
 
 impl Scenario {
+    pub(crate) fn terrains(&self) -> &[Terrain] {
+        &self.terrain_bag
+    }
     pub(crate) fn standard() -> Scenario {
         let hexes = Topology::spiral(2);
 

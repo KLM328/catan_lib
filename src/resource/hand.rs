@@ -23,10 +23,6 @@ impl Hand {
         Ok(())
     }
 
-    pub(crate) fn can_pay(&self, cost: &Cost) -> bool {
-        self.0.covers(&cost.resources())
-    }
-
     pub(crate) fn resources(&self) -> ResourceCounts {
         self.0
     }

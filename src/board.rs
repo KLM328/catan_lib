@@ -59,7 +59,6 @@ pub enum InvalidAction {
     NotConnected,
     RoadMustStartFromNewSettlement,
     NotYourBuilding(VertexId),
-    GameOver,
 }
 
 impl fmt::Display for InvalidAction {
@@ -116,9 +115,6 @@ impl fmt::Display for InvalidAction {
                     "ce n'est pas votre construction sur le noeud {}",
                     vertex_id.value()
                 )
-            }
-            InvalidAction::GameOver => {
-                write!(f, "la partie est terminé")
             }
         }
     }
@@ -276,7 +272,8 @@ impl Board {
                             Err(InvalidAction::NotConnected)
                         }
                     }
-                    GameStatus::End => Err(InvalidAction::GameOver),
+                    GameStatus::End => unreachable!(),
+                    GameStatus::Starting => unreachable!()
                 }
             }
         } else {
