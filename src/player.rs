@@ -33,6 +33,10 @@ impl Player {
         }
     }
 
+    pub fn color(&self) -> PlayerColor {
+        self.color
+    }
+
     pub fn hand(&self) -> &Hand {
         &self.hand
     }
