@@ -181,11 +181,7 @@ impl Board {
     }
 
     pub fn can_place_road(&self, game_status: GameStatus, edge: EdgeId, player: PlayerId) -> bool {
-        let target_edge = self.roads.get(edge.value());
-        if target_edge.is_none() {
-            false
-        } else {
-            let target_edge = target_edge.unwrap();
+        if let Some(target_edge) = self.roads.get(edge.value()) {
             if target_edge.is_some() {
                 false
             } else {
@@ -205,16 +201,16 @@ impl Board {
                                     false
                                 }
                             })
-                            .map(|&v| v)
+                            .copied()
                             .collect::<Vec<VertexId>>();
 
                         !player_buildings.is_empty()
                             && player_buildings.iter().any(|&v| {
-                                self.topology
-                                    .connected_edges(v)
-                                    .iter()
-                                    .all(|&e| self.roads[e.value()] != Some(player))
-                            })
+                            self.topology
+                                .connected_edges(v)
+                                .iter()
+                                .all(|&e| self.roads[e.value()] != Some(player))
+                        })
                     }
                     GameStatus::Playing => {
                         endpoints.iter().any(|&v| {
@@ -225,12 +221,17 @@ impl Board {
                             }
                         }) || connected_edges
                             .iter()
-                            .any(|&e| matches!(self.roads[e.value()], Some(player)))
+                            .any(|&e| self.roads[e.value()] == Some(player))
                     }
                     GameStatus::End => false,
                 }
             }
+        } else {
+            false
         }
+
+
+
     }
 
     pub fn place_road(
@@ -474,6 +475,8 @@ pub mod tests {
         let mut board = init_board();
         assert!(!board.can_place_road(GameStatus::Playing, EdgeId::new(13), PlayerId::new(1)));
         assert!(!board.can_place_road(GameStatus::Playing, EdgeId::new(10), PlayerId::new(0)));
+        assert!(!board.can_place_road(GameStatus::Playing, EdgeId::new(0), PlayerId::new(0)));
+
     }
 
     #[test]
