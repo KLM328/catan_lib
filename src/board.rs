@@ -217,12 +217,15 @@ impl Board {
                             })
                     }
                     GameStatus::Playing => {
-                        endpoints
+                        endpoints.iter().any(|&v| {
+                            if let Some(building) = self.buildings[v.value()] {
+                                building.owner() == player
+                            } else {
+                                false
+                            }
+                        }) || connected_edges
                             .iter()
-                            .any(|&v| matches!(self.buildings[v.value()], Some(player)))
-                            || connected_edges
-                                .iter()
-                                .any(|&e| matches!(self.roads[e.value()], Some(player)))
+                            .any(|&e| matches!(self.roads[e.value()], Some(player)))
                     }
                     GameStatus::End => false,
                 }
@@ -470,6 +473,7 @@ pub mod tests {
     fn test_can_place_road_during_playing_ko() {
         let mut board = init_board();
         assert!(!board.can_place_road(GameStatus::Playing, EdgeId::new(13), PlayerId::new(1)));
+        assert!(!board.can_place_road(GameStatus::Playing, EdgeId::new(10), PlayerId::new(0)));
     }
 
     #[test]
@@ -484,12 +488,12 @@ pub mod tests {
     fn test_place_road_during_playing_ok() {
         let mut board = init_board();
         board
-            .place_road(GameStatus::Playing, EdgeId::new(9), PlayerId::new(1))
+            .place_road(GameStatus::Playing, EdgeId::new(0), PlayerId::new(1))
             .unwrap();
         board
             .place_road(GameStatus::Playing, EdgeId::new(10), PlayerId::new(1))
             .unwrap();
-        assert_eq!(board.roads[9].unwrap(), PlayerId::new(1));
+        assert_eq!(board.roads[0].unwrap(), PlayerId::new(1));
         assert_eq!(board.roads[10].unwrap(), PlayerId::new(1));
     }
 
