@@ -44,19 +44,28 @@ impl From<TerrainTokenMismatch> for InvalidBoard {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvalidAction {
-    RobberOnDesert,
+    // structurel
     UnexistingTile(TileId),
     UnexistingVertex(VertexId),
-    UnexistingBuilding(VertexId),
-    UnauthorizedAction,
-    IsNotSettlement(VertexId),
     UnexistingEdge(EdgeId),
+    UnexistingBuilding(VertexId),
+    RobberNotOnDesert,
+    IsNotSettlement(VertexId),
+
+    // règles de pose
+    VertexOccupied(VertexId),
+    TooCloseToBuilding(VertexId),
+    EdgeOccupied(EdgeId),
+    NotConnected,
+    RoadMustStartFromNewSettlement,
+    NotYourBuilding(VertexId),
+    GameOver,
 }
 
 impl fmt::Display for InvalidAction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            InvalidAction::RobberOnDesert => {
+            InvalidAction::RobberNotOnDesert => {
                 write!(f, "Le voleur ne peut pas être déplacé sur un désert")
             }
             InvalidAction::UnexistingTile(tile_id) => {
@@ -79,11 +88,37 @@ impl fmt::Display for InvalidAction {
                     vertex_id.value()
                 )
             }
-            InvalidAction::UnauthorizedAction => {
-                write!(f, "Vous n'avez pas la permission d'effectuer cette action")
-            }
             InvalidAction::UnexistingEdge(edge_id) => {
                 write!(f, "L'arête {} n'existe pas", edge_id.value())
+            }
+            InvalidAction::VertexOccupied(verted_id) => {
+                write!(f, "Le noeud {} est occupé", verted_id.value())
+            }
+            InvalidAction::TooCloseToBuilding(vertex_id) => {
+                write!(
+                    f,
+                    "Le noeud {} est trop proche d'une construction",
+                    vertex_id.value()
+                )
+            }
+            InvalidAction::EdgeOccupied(edge_id) => {
+                write!(f, "l'arête {} est déjà occupée", edge_id.value())
+            }
+            InvalidAction::NotConnected => {
+                write!(f, "pas connecté aux autres constructions du joueur")
+            }
+            InvalidAction::RoadMustStartFromNewSettlement => {
+                write!(f, "la route doit commencer par une nouvelle colonie")
+            }
+            InvalidAction::NotYourBuilding(vertex_id) => {
+                write!(
+                    f,
+                    "ce n'est pas votre construction sur le noeud {}",
+                    vertex_id.value()
+                )
+            }
+            InvalidAction::GameOver => {
+                write!(f, "la partie est terminé")
             }
         }
     }
@@ -166,24 +201,32 @@ impl Board {
         game_status: GameStatus,
         vertex: VertexId,
         player: PlayerId,
-    ) -> bool {
-        let mut vertexs = self.topology.vertex_neighbors(vertex);
+    ) -> Result<(), InvalidAction> {
+        let mut vertices = self.topology.vertex_neighbors(vertex);
         let connected_edges = self.topology.connected_edges(vertex);
-        vertexs.push(vertex);
-        if !vertexs.iter().all(|v| self.buildings[v.value()].is_none()) {
-            false
+        vertices.push(vertex);
+        if !vertices.iter().all(|v| self.buildings[v.value()].is_none()) {
+            Err(InvalidAction::TooCloseToBuilding(vertex))
+        } else if matches!(game_status, GameStatus::Placement)
+            || connected_edges
+                .iter()
+                .any(|&e_id| self.roads[e_id.value()] == Some(player))
+        {
+            Ok(())
         } else {
-            matches!(game_status, GameStatus::Placement)
-                || connected_edges
-                    .iter()
-                    .any(|&e_id| self.roads[e_id.value()] == Some(player))
+            Err(InvalidAction::NotConnected)
         }
     }
 
-    pub(crate) fn can_place_road(&self, game_status: GameStatus, edge: EdgeId, player: PlayerId) -> bool {
+    pub(crate) fn can_place_road(
+        &self,
+        game_status: GameStatus,
+        edge: EdgeId,
+        player: PlayerId,
+    ) -> Result<(), InvalidAction> {
         if let Some(target_edge) = self.roads.get(edge.value()) {
             if target_edge.is_some() {
-                false
+                Err(InvalidAction::EdgeOccupied(edge))
             } else {
                 let endpoints = self.topology.edges_endpoints()[edge.value()];
                 let mut connected_edges = Vec::new();
@@ -203,17 +246,22 @@ impl Board {
                             })
                             .copied()
                             .collect::<Vec<VertexId>>();
-
-                        !player_buildings.is_empty()
-                            && player_buildings.iter().any(|&v| {
+                        if player_buildings.is_empty() {
+                            Err(InvalidAction::NotConnected)
+                        } else if player_buildings.iter().any(|&v| {
                             self.topology
                                 .connected_edges(v)
                                 .iter()
                                 .all(|&e| self.roads[e.value()] != Some(player))
-                        })
+                        }) {
+                            Ok(())
+                        } else {
+                            Err(InvalidAction::RoadMustStartFromNewSettlement)
+                        }
                     }
+
                     GameStatus::Playing => {
-                        endpoints.iter().any(|&v| {
+                        if endpoints.iter().any(|&v| {
                             if let Some(building) = self.buildings[v.value()] {
                                 building.owner() == player
                             } else {
@@ -222,16 +270,18 @@ impl Board {
                         }) || connected_edges
                             .iter()
                             .any(|&e| self.roads[e.value()] == Some(player))
+                        {
+                            Ok(())
+                        } else {
+                            Err(InvalidAction::NotConnected)
+                        }
                     }
-                    GameStatus::End => false,
+                    GameStatus::End => Err(InvalidAction::GameOver),
                 }
             }
         } else {
-            false
+            Err(InvalidAction::EdgeOccupied(edge))
         }
-
-
-
     }
 
     pub(crate) fn place_road(
@@ -243,12 +293,9 @@ impl Board {
         if self.roads.get(edge.value()).is_none() {
             Err(InvalidAction::UnexistingEdge(edge))
         } else {
-            if self.can_place_road(game_status, edge, player) {
-                self.roads[edge.value()] = Some(player);
-                Ok(())
-            } else {
-                Err(InvalidAction::UnauthorizedAction)
-            }
+            self.can_place_road(game_status, edge, player)?;
+            self.roads[edge.value()] = Some(player);
+            Ok(())
         }
     }
 
@@ -259,12 +306,9 @@ impl Board {
         player: PlayerId,
         building_kind: BuildingKind,
     ) -> Result<(), InvalidAction> {
-        if self.can_place_building(game_status, vertex, player) {
-            self.buildings[vertex.value()] = Some(Building::new(building_kind, player));
-            Ok(())
-        } else {
-            Err(InvalidAction::UnexistingVertex(vertex))
-        }
+        self.can_place_building(game_status, vertex, player)?;
+        self.buildings[vertex.value()] = Some(Building::new(building_kind, player));
+        Ok(())
     }
 
     pub(crate) fn move_robber(&mut self, tile_id: TileId) -> Result<(), InvalidAction> {
@@ -272,7 +316,7 @@ impl Board {
         match option_tile {
             Some(tile) => {
                 if matches!(tile, Tile::Desert) {
-                    Err(InvalidAction::RobberOnDesert)
+                    Err(InvalidAction::RobberNotOnDesert)
                 } else {
                     self.robber = tile_id;
                     Ok(())
@@ -294,7 +338,7 @@ impl Board {
                         Some(Building::new(BuildingKind::City, player));
                     Ok(())
                 } else {
-                    Err(InvalidAction::UnauthorizedAction)
+                    Err(InvalidAction::NotYourBuilding(vertex))
                 }
             } else {
                 Err(InvalidAction::IsNotSettlement(vertex))
@@ -395,23 +439,23 @@ pub mod tests {
             GameStatus::Placement,
             VertexId::new(0),
             PlayerId::new(1)
-        ));
+        ).is_ok());
     }
 
     #[test]
     fn test_can_place_building_ko_road() {
         let board = init_board_without_buildings();
-        assert!(!board.can_place_building(GameStatus::Playing, VertexId::new(0), PlayerId::new(1)));
+        assert!(matches!(board.can_place_building(GameStatus::Playing, VertexId::new(0), PlayerId::new(1)), Err(InvalidAction::NotConnected)));
     }
 
     #[test]
     fn test_can_place_building_ko_neighbor() {
         let board = init_board();
-        assert!(!board.can_place_building(
+        assert!(matches!(board.can_place_building(
             GameStatus::Placement,
             VertexId::new(3),
             PlayerId::new(0)
-        ));
+        ), Err(InvalidAction::TooCloseToBuilding(_))));
     }
 
     #[test]
@@ -426,11 +470,7 @@ pub mod tests {
     #[test]
     fn test_upgrade_settlement_ko_wrong_player() {
         let mut board = init_board();
-        assert!(
-            board
-                .upgrade_settlement(VertexId::new(8), PlayerId::new(0))
-                .is_err()
-        );
+        assert!(matches!(board.upgrade_settlement(VertexId::new(8), PlayerId::new(0)), Err(InvalidAction::NotYourBuilding(_))));
     }
 
     #[test]
@@ -446,45 +486,45 @@ pub mod tests {
     #[test]
     fn test_can_place_road_during_placement_ok() {
         let mut board = init_board();
-        assert!(board.can_place_road(GameStatus::Placement, EdgeId::new(9), PlayerId::new(1)));
-        assert!(board.can_place_road(GameStatus::Placement, EdgeId::new(10), PlayerId::new(1)));
+        assert!(board.can_place_road(GameStatus::Placement, EdgeId::new(9), PlayerId::new(1)).is_ok());
+        assert!(board.can_place_road(GameStatus::Placement, EdgeId::new(10), PlayerId::new(1)).is_ok());
     }
 
     #[test]
     fn test_can_place_road_during_placement_ko() {
         let mut board = init_board();
-        assert!(!board.can_place_road(GameStatus::Placement, EdgeId::new(9), PlayerId::new(0)));
-        assert!(!board.can_place_road(GameStatus::Placement, EdgeId::new(11), PlayerId::new(1)));
+        assert!(matches!(board.can_place_road(GameStatus::Placement, EdgeId::new(9), PlayerId::new(0)), Err(InvalidAction::NotConnected)));
+        assert!(matches!(board.can_place_road(GameStatus::Placement, EdgeId::new(11), PlayerId::new(1)), Err(InvalidAction::NotConnected)));
     }
 
     #[test]
     fn test_can_place_road_during_placement_ko_two_road_to_the_same_building() {
         let mut board = init_board();
-        assert!(!board.can_place_road(GameStatus::Placement, EdgeId::new(4), PlayerId::new(1)));
+        assert!(matches!(board.can_place_road(GameStatus::Placement, EdgeId::new(4), PlayerId::new(1)), Err(InvalidAction::RoadMustStartFromNewSettlement)));
+        assert!(matches!(board.can_place_road(GameStatus::Placement, EdgeId::new(5), PlayerId::new(1)), Err(InvalidAction::EdgeOccupied(_))));
     }
 
     #[test]
     fn test_can_place_road_during_placement_ko_second_road_consecutive_to_first_road() {
         let mut board = init_board();
-        assert!(!board.can_place_road(GameStatus::Placement, EdgeId::new(0), PlayerId::new(1)));
-        assert!(!board.can_place_road(GameStatus::Placement, EdgeId::new(4), PlayerId::new(1)));
+        assert!(matches!(board.can_place_road(GameStatus::Placement, EdgeId::new(0), PlayerId::new(1)), Err(InvalidAction::NotConnected)));
+        assert!(matches!(board.can_place_road(GameStatus::Placement, EdgeId::new(4), PlayerId::new(1)), Err(InvalidAction::RoadMustStartFromNewSettlement)));
     }
 
     #[test]
     fn test_can_place_road_during_playing_ko() {
         let mut board = init_board();
-        assert!(!board.can_place_road(GameStatus::Playing, EdgeId::new(13), PlayerId::new(1)));
-        assert!(!board.can_place_road(GameStatus::Playing, EdgeId::new(10), PlayerId::new(0)));
-        assert!(!board.can_place_road(GameStatus::Playing, EdgeId::new(0), PlayerId::new(0)));
-
+        assert!(matches!(board.can_place_road(GameStatus::Playing, EdgeId::new(13), PlayerId::new(1)), Err(InvalidAction::NotConnected)));
+        assert!(matches!(board.can_place_road(GameStatus::Playing, EdgeId::new(10), PlayerId::new(0)), Err(InvalidAction::NotConnected)));
+        assert!(matches!(board.can_place_road(GameStatus::Playing, EdgeId::new(0), PlayerId::new(0)), Err(InvalidAction::NotConnected)));
     }
 
     #[test]
     fn test_can_place_road_during_playing_ok() {
         let mut board = init_board();
-        assert!(board.can_place_road(GameStatus::Playing, EdgeId::new(9), PlayerId::new(1)));
-        assert!(board.can_place_road(GameStatus::Playing, EdgeId::new(4), PlayerId::new(1)));
-        assert!(board.can_place_road(GameStatus::Playing, EdgeId::new(10), PlayerId::new(1)));
+        assert!(board.can_place_road(GameStatus::Playing, EdgeId::new(9), PlayerId::new(1)).is_ok());
+        assert!(board.can_place_road(GameStatus::Playing, EdgeId::new(4), PlayerId::new(1)).is_ok());
+        assert!(board.can_place_road(GameStatus::Playing, EdgeId::new(10), PlayerId::new(1)).is_ok());
     }
 
     #[test]
