@@ -485,13 +485,22 @@ mod tests {
         assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(3, 2).unwrap(), Roll::new(3, 3).unwrap(), Roll::new(4, 4).unwrap()]), Ok(()));
         assert_eq!(game.turn_order, vec![PlayerId::new(3), PlayerId::new(0), PlayerId::new(1), PlayerId::new(2)]);
         assert_eq!(game.current_player(), PlayerId::new(3));
+        assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
         game.next_player();
         assert_eq!(game.current_player(), PlayerId::new(0));
+        assert_eq!(game.check_player(PlayerId::new(0)), Ok(()));
+
         game.next_player();
         assert_eq!(game.current_player(), PlayerId::new(1));
+        assert_eq!(game.check_player(PlayerId::new(1)), Ok(()));
+
         game.next_player();
         assert_eq!(game.current_player(), PlayerId::new(2));
+        assert_eq!(game.check_player(PlayerId::new(2)), Ok(()));
+
         game.next_player();
         assert_eq!(game.current_player(), PlayerId::new(3));
+        assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
+
     }
 }
