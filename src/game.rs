@@ -10,13 +10,13 @@ pub enum GameError {
     Placement(InvalidAction),
     NotEnoughResources,
     NotYourTurn,
-    PlayerNotFound(PlayerId),
     GameOver,
     GameIsStarting,
     GameIsNotPlaying,
     WrongRollCount,
     TiedRolls,
     NotEnoughPlayers,
+    PlayerNotFound(PlayerId),
 }
 
 impl From<InvalidAction> for GameError {
@@ -50,7 +50,7 @@ pub struct Game {
     status: GameStatus,
     players: Vec<Player>,
     turn_order: Vec<PlayerId>,
-    current_player: PlayerId,
+    current_player: usize,
     board: Option<Board>,
 }
 
@@ -72,7 +72,7 @@ impl Game {
                     .into_iter()
                     .map(|i| PlayerId::new(i))
                     .collect(),
-                current_player: PlayerId::new(0),
+                current_player: 0,
                 players,
                 board: None,
             })
@@ -100,17 +100,23 @@ impl Game {
         self.status
     }
 
+    pub fn current_player(&self) -> PlayerId {
+        self.turn_order[self.current_player]
+    }
+
+    pub fn next_player(&mut self) {
+        self.current_player = (self.current_player + 1) % self.turn_order.len();
+    }
+
     pub fn set_players_order(&mut self, rolls: Vec<Roll>) -> Result<(), GameError> {
         if rolls.len() == self.players.len() {
             let best = rolls.iter().map(|r| r.value()).max().unwrap();
             if rolls.iter().filter(|r| r.value() == best).count() > 1 {
                 Err(GameError::TiedRolls)
             } else {
-                let mut order = vec![rolls.iter().enumerate().filter(|(_, r)| r.value() == best).map(|(i, _)| PlayerId::new(i)).collect::<Vec<PlayerId>>()[0]];
-                let first_player_index = order[0].value();
-                self.players.iter().enumerate().filter(|(i, _)| *i > first_player_index).for_each(|(i, _)| {order.push(PlayerId::new(i))});
-                self.players.iter().enumerate().filter(|(i, _)| *i < first_player_index).for_each(|(i, _)| {order.push(PlayerId::new(i))});
-                self.turn_order = order;
+                let first = rolls.iter().position(|r| r.value() == best).unwrap();
+                let n = self.players.len();
+                self.turn_order = (0..n).map(|k| PlayerId::new((first + k) % n)).collect();
                 Ok(())
             }
         } else {
@@ -189,10 +195,11 @@ impl Game {
     }
 
     pub fn check_player(&self, player_id: PlayerId) -> Result<(), GameError> {
-        let Some(_) = self.players.get(player_id.value()) else {
-            return Err(GameError::PlayerNotFound(player_id));
-        };
-        Ok(())
+        if player_id.value() == self.current_player {
+            Ok(())
+        } else {
+            Err(GameError::NotYourTurn)
+        }
     }
     pub fn get_player_mut(&mut self, player_id: PlayerId) -> Result<&mut Player, GameError> {
         let Some(player) = self.players.get_mut(player_id.value()) else {
@@ -248,6 +255,7 @@ mod tests {
 
         game.start(&terrains).unwrap();
         game.set_status(GameStatus::Placement);
+        game.next_player();
         game.build_settlement(PlayerId::new(1), VertexId::new(4))
             .unwrap();
         game.build_settlement(PlayerId::new(1), VertexId::new(8))
@@ -260,6 +268,7 @@ mod tests {
         game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(4))
             .unwrap();
         game.set_status(GameStatus::Placement);
+        game.next_player();
 
         game
     }
@@ -300,6 +309,11 @@ mod tests {
     fn test_build_road() {
         let mut game = init_game();
         assert_eq!(
+            game.build_road(PlayerId::new(0), EdgeId::new(0)),
+            Err(GameError::Placement(RoadMustStartFromNewSettlement))
+        );
+        game.next_player();
+        assert_eq!(
             game.build_road(PlayerId::new(1), EdgeId::new(0)),
             Err(GameError::Placement(RoadMustStartFromNewSettlement))
         );
@@ -309,10 +323,6 @@ mod tests {
         );
         assert_eq!(
             game.build_road(PlayerId::new(1), EdgeId::new(4)),
-            Err(GameError::Placement(RoadMustStartFromNewSettlement))
-        );
-        assert_eq!(
-            game.build_road(PlayerId::new(0), EdgeId::new(0)),
             Err(GameError::Placement(RoadMustStartFromNewSettlement))
         );
         assert!(game.build_road(PlayerId::new(1), EdgeId::new(10)).is_ok()); //Attenttion nouvelle route de placée
@@ -425,15 +435,17 @@ mod tests {
         game.set_status(GameStatus::Playing);
         assert_eq!(
             game.upgrade_settlement_to_city(PlayerId::new(18), VertexId::new(8)),
-            Err(GameError::PlayerNotFound(PlayerId::new(18)))
+            Err(GameError::NotYourTurn)
         );
-        assert_eq!(
-            game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(100)),
-            Err(GameError::Placement(UnexistingVertex(VertexId::new(100))))
-        );
+
         assert_eq!(
             game.upgrade_settlement_to_city(PlayerId::new(0), VertexId::new(8)),
             Err(GameError::Placement(NotYourSettlement(VertexId::new(8))))
+        );
+        game.next_player();
+        assert_eq!(
+            game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(100)),
+            Err(GameError::Placement(UnexistingVertex(VertexId::new(100))))
         );
         assert_eq!(
             game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(8)),
