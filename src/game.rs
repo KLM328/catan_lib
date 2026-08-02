@@ -2,7 +2,6 @@ use crate::{
     Board, Cost, EdgeId, InvalidAction, InvalidBoard, NotEnoughResources, Player, PlayerId,
     Production, Roll, Scenario, Terrain, VertexId,
 };
-use std::cmp::Reverse;
 
 #[derive(Debug, PartialEq)]
 pub enum GameError {
@@ -238,7 +237,6 @@ mod tests {
         TooCloseToBuilding, UnexistingEdge, UnexistingVertex,
     };
     use crate::board::BuildingKind::{City, Settlement};
-    use crate::board::tests::init_board;
     use crate::player::PlayerColor;
     use crate::{Building, Resource, ResourceCounts};
 
