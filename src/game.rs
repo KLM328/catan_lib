@@ -50,7 +50,7 @@ pub struct Game {
     status: GameStatus,
     players: Vec<Player>,
     turn_order: Vec<PlayerId>,
-    current_player: usize,
+    current_turn: usize,
     board: Option<Board>,
 }
 
@@ -72,7 +72,7 @@ impl Game {
                     .into_iter()
                     .map(|i| PlayerId::new(i))
                     .collect(),
-                current_player: 0,
+                current_turn: 0,
                 players,
                 board: None,
             })
@@ -101,11 +101,11 @@ impl Game {
     }
 
     pub fn current_player(&self) -> PlayerId {
-        self.turn_order[self.current_player]
+        self.turn_order[self.current_turn]
     }
 
     pub fn next_player(&mut self) {
-        self.current_player = (self.current_player + 1) % self.turn_order.len();
+        self.current_turn = (self.current_turn + 1) % self.turn_order.len();
     }
 
     pub fn set_players_order(&mut self, rolls: Vec<Roll>) -> Result<(), GameError> {
@@ -195,7 +195,7 @@ impl Game {
     }
 
     pub fn check_player(&self, player_id: PlayerId) -> Result<(), GameError> {
-        if player_id.value() == self.current_player {
+        if player_id == self.current_player() {
             Ok(())
         } else {
             Err(GameError::NotYourTurn)
@@ -287,16 +287,16 @@ mod tests {
     #[test]
     fn test_apply_roll_with_robber() {
         let mut game = init_game();
-        game.players[0].receive(crate::Resource::Wood, 3);
-        game.players[0].receive(crate::Resource::Wheat, 2);
-        game.players[0].receive(crate::Resource::Stone, 2);
+        game.players[0].receive(Resource::Wood, 3);
+        game.players[0].receive(Resource::Wheat, 2);
+        game.players[0].receive(Resource::Stone, 2);
         assert_eq!(
             game.apply_roll(Roll::new(4, 3).unwrap()),
             Ok(RollOutcome::RobberActivated {
                 must_discard: vec![]
             })
         );
-        game.players[0].receive(crate::Resource::Brick, 1);
+        game.players[0].receive(Resource::Brick, 1);
         assert_eq!(
             game.apply_roll(Roll::new(4, 3).unwrap()),
             Ok(RollOutcome::RobberActivated {
@@ -479,5 +479,21 @@ mod tests {
         assert_eq!(game.turn_order, vec![PlayerId::new(3), PlayerId::new(0), PlayerId::new(1), PlayerId::new(2)]);
         assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(6, 4).unwrap(), Roll::new(3, 3).unwrap(), Roll::new(4, 4).unwrap()]), Ok(()));
         assert_eq!(game.turn_order, vec![PlayerId::new(1), PlayerId::new(2), PlayerId::new(3), PlayerId::new(0)]);
+    }
+
+    #[test]
+    fn test_turn_order() {
+        let mut game = Game::new(Scenario::test_scenario(), vec![Player::new(PlayerColor::Blue), Player::new(PlayerColor::White) ,Player::new(PlayerColor::Red), Player::new(PlayerColor::Orange)]).unwrap();
+        assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(3, 2).unwrap(), Roll::new(3, 3).unwrap(), Roll::new(4, 4).unwrap()]), Ok(()));
+        assert_eq!(game.turn_order, vec![PlayerId::new(3), PlayerId::new(0), PlayerId::new(1), PlayerId::new(2)]);
+        assert_eq!(game.current_player(), PlayerId::new(3));
+        game.next_player();
+        assert_eq!(game.current_player(), PlayerId::new(0));
+        game.next_player();
+        assert_eq!(game.current_player(), PlayerId::new(1));
+        game.next_player();
+        assert_eq!(game.current_player(), PlayerId::new(2));
+        game.next_player();
+        assert_eq!(game.current_player(), PlayerId::new(3));
     }
 }
