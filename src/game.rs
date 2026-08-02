@@ -37,28 +37,16 @@ impl From<InvalidBoard> for GameError {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum GameStatus {
     Starting,
-    Placement(Placement),
+    FirstPlacement,
+    SecondPlacement,
     Playing,
     End,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct Placement {
-    turn: u8,
-}
 
-impl Placement {
-    pub fn new(turn: u8) -> Result<Self, GameError> {
-        if matches!(turn, 1 | 2) {
-            Ok(Self { turn })
-        } else {
-            Err(GameError::InvalidPlacementTurn)
-        }
-    }
-}
 
 pub struct Game {
     scenario: Scenario,
@@ -102,7 +90,7 @@ impl Game {
     }
     pub fn start(&mut self, shuffled: &[Terrain]) -> Result<(), GameError> {
         self.board = Some(self.scenario.layout(shuffled)?);
-        self.set_status(GameStatus::Placement(Placement::new(1)?));
+        self.set_status(GameStatus::FirstPlacement);
         Ok(())
     }
 
@@ -119,31 +107,31 @@ impl Game {
     }
 
     pub fn next_player(&mut self) -> Result<(), GameError> {
-        if let GameStatus::Placement(Placement { turn }) = self.status {
-            match turn {
-                1 => {
-                    if self.current_turn == self.turn_order.len() - 1 {
-                        self.set_status(GameStatus::Placement(Placement::new(2)?));
-                        Ok(())
-                    } else {
-                        self.current_turn = self.current_turn + 1;
-                        Ok(())
-                    }
+        match self.status {
+            GameStatus::FirstPlacement => {
+                if self.current_turn == self.turn_order.len() - 1 {
+                    self.set_status(GameStatus::SecondPlacement);
+                    Ok(())
+                } else {
+                    self.current_turn = self.current_turn + 1;
+                    Ok(())
                 }
-                2 => {
-                    if self.current_turn == 0 {
-                        self.set_status(GameStatus::Playing);
-                        Ok(())
-                    } else {
-                        self.current_turn = self.current_turn - 1;
-                        Ok(())
-                    }
-                },
-                _ => unreachable!()
             }
-        } else {
-            self.current_turn = (self.current_turn + 1) % self.turn_order.len();
-            Ok(())
+            GameStatus::Starting => Err(GameError::GameIsStarting),
+            GameStatus::SecondPlacement => {
+                if self.current_turn == 0 {
+                    self.set_status(GameStatus::Playing);
+                    Ok(())
+                } else {
+                    self.current_turn = self.current_turn - 1;
+                    Ok(())
+                }
+            }
+            GameStatus::Playing => {
+                self.current_turn = (self.current_turn + 1) % self.turn_order.len();
+                Ok(())
+            }
+            GameStatus::End => Err(GameError::GameOver)
         }
     }
 
@@ -166,7 +154,8 @@ impl Game {
     pub fn playable_status(&self) -> Result<(), GameError> {
         match self.status {
             GameStatus::Starting => Err(GameError::GameIsStarting),
-            GameStatus::Placement(_) => Ok(()),
+            GameStatus::SecondPlacement => Ok(()),
+            GameStatus::FirstPlacement => Ok(()),
             GameStatus::Playing => Ok(()),
             GameStatus::End => Err(GameError::GameOver),
         }
@@ -293,7 +282,9 @@ mod tests {
         .unwrap();
 
         game.start(&terrains).unwrap();
-        game.next_player();
+        game.next_player(); //J1
+
+
         game.build_settlement(PlayerId::new(1), VertexId::new(4))
             .unwrap();
         game.build_settlement(PlayerId::new(1), VertexId::new(8))
@@ -305,8 +296,9 @@ mod tests {
         game.players[1].receive(Resource::Stone, 3);
         game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(4))
             .unwrap();
-        game.set_status(GameStatus::Placement(Placement::new(1).unwrap()));
-        game.next_player();
+
+        game.next_player(); //J0
+        game.set_status(GameStatus::FirstPlacement);
 
         game
     }
@@ -466,10 +458,6 @@ mod tests {
     #[test]
     fn test_upgrade_settlement_to_city() {
         let mut game = init_game();
-        assert_eq!(
-            game.upgrade_settlement_to_city(PlayerId::new(0), VertexId::new(8)),
-            Err(GameError::GameIsNotPlaying)
-        );
         game.set_status(GameStatus::Playing);
         assert_eq!(
             game.upgrade_settlement_to_city(PlayerId::new(18), VertexId::new(8)),
@@ -605,22 +593,72 @@ mod tests {
                 PlayerId::new(2)
             ]
         );
+        let tiles = game.scenario.terrains().to_vec();
+        game.start(&tiles).unwrap();
+        assert_eq!(game.status(), GameStatus::FirstPlacement);
+
+
         assert_eq!(game.current_player(), PlayerId::new(3));
         assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
-        game.next_player();
+        game.next_player().unwrap();
+
+
         assert_eq!(game.current_player(), PlayerId::new(0));
         assert_eq!(game.check_player(PlayerId::new(0)), Ok(()));
 
-        game.next_player();
+        game.next_player().unwrap();
         assert_eq!(game.current_player(), PlayerId::new(1));
         assert_eq!(game.check_player(PlayerId::new(1)), Ok(()));
 
-        game.next_player();
+
+
+        game.next_player().unwrap();
+        assert_eq!(game.status(), GameStatus::FirstPlacement);
         assert_eq!(game.current_player(), PlayerId::new(2));
         assert_eq!(game.check_player(PlayerId::new(2)), Ok(()));
 
-        game.next_player();
+
+        game.next_player().unwrap();
+        assert_eq!(game.status(), GameStatus::SecondPlacement);
+        assert_eq!(game.current_player(), PlayerId::new(2));
+        assert_eq!(game.check_player(PlayerId::new(2)), Ok(()));
+
+        game.next_player().unwrap();
+        assert_eq!(game.current_player(), PlayerId::new(1));
+        assert_eq!(game.check_player(PlayerId::new(1)), Ok(()));
+
+        game.next_player().unwrap();
+        assert_eq!(game.current_player(), PlayerId::new(0));
+        assert_eq!(game.check_player(PlayerId::new(0)), Ok(()));
+
+
+
+        game.next_player().unwrap();
+        assert_eq!(game.status(), GameStatus::SecondPlacement);
         assert_eq!(game.current_player(), PlayerId::new(3));
         assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
+
+
+        game.next_player().unwrap();
+        assert_eq!(game.status(), GameStatus::Playing);
+        assert_eq!(game.current_player(), PlayerId::new(3));
+        assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
+
+        game.next_player().unwrap();
+        assert_eq!(game.current_player(), PlayerId::new(0));
+        assert_eq!(game.check_player(PlayerId::new(0)), Ok(()));
+
+        game.next_player().unwrap();
+        assert_eq!(game.current_player(), PlayerId::new(1));
+        assert_eq!(game.check_player(PlayerId::new(1)), Ok(()));
+
+        game.next_player().unwrap();
+        assert_eq!(game.current_player(), PlayerId::new(2));
+        assert_eq!(game.check_player(PlayerId::new(2)), Ok(()));
+
+        game.next_player().unwrap();
+        assert_eq!(game.current_player(), PlayerId::new(3));
+        assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
+
     }
 }

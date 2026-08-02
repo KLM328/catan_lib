@@ -88,7 +88,7 @@ impl Scenario {
         }
         occ_terrains
     }
-    
+
     #[cfg(test)]
     pub(crate) fn test_scenario() -> Scenario {
         Scenario {topology : Topology::test_topology(), terrain_bag : vec![Terrain::Forest, Terrain::Hills, Terrain::Desert], token_sequence : vec![NumberToken::new(6).unwrap(), NumberToken::new(8).unwrap()]}
