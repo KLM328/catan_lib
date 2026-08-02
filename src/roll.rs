@@ -30,7 +30,7 @@ impl Roll {
         }
     }
 
-    pub(crate) fn random() -> Self {
+    pub fn random() -> Self {
         let mut rng = rand::rng();
         Self::new(rng.random_range(1..=6), rng.random_range(1..=6)).unwrap()
     }
