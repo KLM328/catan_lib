@@ -2,6 +2,7 @@ use crate::{
     Board, Cost, EdgeId, InvalidAction, InvalidBoard, NotEnoughResources, Player, PlayerId,
     Production, Roll, Scenario, Terrain, VertexId,
 };
+use std::cmp::Reverse;
 
 #[derive(Debug, PartialEq)]
 pub enum GameError {
@@ -13,6 +14,9 @@ pub enum GameError {
     GameOver,
     GameIsStarting,
     GameIsNotPlaying,
+    WrongRollCount,
+    TiedRolls,
+    NotEnoughPlayers,
 }
 
 impl From<InvalidAction> for GameError {
@@ -45,6 +49,8 @@ pub struct Game {
     scenario: Scenario,
     status: GameStatus,
     players: Vec<Player>,
+    turn_order: Vec<PlayerId>,
+    current_player: PlayerId,
     board: Option<Board>,
 }
 
@@ -55,13 +61,23 @@ pub enum RollOutcome {
 }
 
 impl Game {
-    pub fn new(scenario: Scenario, players: Vec<Player>) -> Game {
-        Game {
-            scenario,
-            status: GameStatus::Starting,
-            players,
-            board: None,
+    pub fn new(scenario: Scenario, players: Vec<Player>) -> Result<Game, GameError> {
+        if players.is_empty() {
+            Err(GameError::NotEnoughPlayers)
+        } else {
+            Ok(Game {
+                scenario,
+                status: GameStatus::Starting,
+                turn_order: (0..players.len())
+                    .into_iter()
+                    .map(|i| PlayerId::new(i))
+                    .collect(),
+                current_player: PlayerId::new(0),
+                players,
+                board: None,
+            })
         }
+
     }
 
     fn board(&self) -> Result<&Board, GameError> {
@@ -82,6 +98,24 @@ impl Game {
 
     pub fn status(&self) -> GameStatus {
         self.status
+    }
+
+    pub fn set_players_order(&mut self, rolls: Vec<Roll>) -> Result<(), GameError> {
+        if rolls.len() == self.players.len() {
+            let best = rolls.iter().map(|r| r.value()).max().unwrap();
+            if rolls.iter().filter(|r| r.value() == best).count() > 1 {
+                Err(GameError::TiedRolls)
+            } else {
+                let mut order = vec![rolls.iter().enumerate().filter(|(_, r)| r.value() == best).map(|(i, _)| PlayerId::new(i)).collect::<Vec<PlayerId>>()[0]];
+                let first_player_index = order[0].value();
+                self.players.iter().enumerate().filter(|(i, _)| *i > first_player_index).for_each(|(i, _)| {order.push(PlayerId::new(i))});
+                self.players.iter().enumerate().filter(|(i, _)| *i < first_player_index).for_each(|(i, _)| {order.push(PlayerId::new(i))});
+                self.turn_order = order;
+                Ok(())
+            }
+        } else {
+            Err(GameError::WrongRollCount)
+        }
     }
 
     pub fn playable_status(&self) -> Result<(), GameError> {
@@ -198,13 +232,19 @@ mod tests {
     };
     use crate::board::BuildingKind::{City, Settlement};
     use crate::board::tests::init_board;
-    use crate::{Building, Resource, ResourceCounts};
     use crate::player::PlayerColor;
+    use crate::{Building, Resource, ResourceCounts};
 
     fn init_game() -> Game {
         let scenario = Scenario::test_scenario();
         let terrains = scenario.terrains().to_vec();
-        let mut game = Game::new(scenario, vec![Player::new(PlayerColor::Blue), Player::new(PlayerColor::Red)]);
+        let mut game = Game::new(
+            scenario,
+            vec![
+                Player::new(PlayerColor::Blue),
+                Player::new(PlayerColor::Red),
+            ],
+        ).unwrap();
 
         game.start(&terrains).unwrap();
         game.set_status(GameStatus::Placement);
@@ -415,5 +455,17 @@ mod tests {
             game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(4)),
             Err(GameError::GameOver)
         );
+    }
+
+    #[test]
+    fn test_players_order() {
+        let mut game = Game::new(Scenario::test_scenario(), vec![Player::new(PlayerColor::Blue), Player::new(PlayerColor::White) ,Player::new(PlayerColor::Red), Player::new(PlayerColor::Orange)]).unwrap();
+
+        assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(6, 2).unwrap(), Roll::new(3, 3).unwrap()]), Err(GameError::WrongRollCount));
+        assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(6, 2).unwrap(), Roll::new(3, 3).unwrap(), Roll::new(4, 4).unwrap()]), Err(GameError::TiedRolls));
+        assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(3, 2).unwrap(), Roll::new(3, 3).unwrap(), Roll::new(4, 4).unwrap()]), Ok(()));
+        assert_eq!(game.turn_order, vec![PlayerId::new(3), PlayerId::new(0), PlayerId::new(1), PlayerId::new(2)]);
+        assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(6, 4).unwrap(), Roll::new(3, 3).unwrap(), Roll::new(4, 4).unwrap()]), Ok(()));
+        assert_eq!(game.turn_order, vec![PlayerId::new(1), PlayerId::new(2), PlayerId::new(3), PlayerId::new(0)]);
     }
 }
