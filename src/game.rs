@@ -16,6 +16,7 @@ pub enum GameError {
     TiedRolls,
     NotEnoughPlayers,
     PlayerNotFound(PlayerId),
+    InvalidPlacementTurn,
 }
 
 impl From<InvalidAction> for GameError {
@@ -39,9 +40,24 @@ impl From<InvalidBoard> for GameError {
 #[derive(Copy, Clone, Debug)]
 pub enum GameStatus {
     Starting,
-    Placement(u8),
+    Placement(Placement),
     Playing,
     End,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Placement {
+    turn: u8,
+}
+
+impl Placement {
+    pub fn new(turn: u8) -> Result<Self, GameError> {
+        if matches!(turn, 1 | 2) {
+            Ok(Self { turn })
+        } else {
+            Err(GameError::InvalidPlacementTurn)
+        }
+    }
 }
 
 pub struct Game {
@@ -76,7 +92,6 @@ impl Game {
                 board: None,
             })
         }
-
     }
 
     fn board(&self) -> Result<&Board, GameError> {
@@ -87,7 +102,7 @@ impl Game {
     }
     pub fn start(&mut self, shuffled: &[Terrain]) -> Result<(), GameError> {
         self.board = Some(self.scenario.layout(shuffled)?);
-        self.set_status(GameStatus::Placement(1));
+        self.set_status(GameStatus::Placement(Placement::new(1)?));
         Ok(())
     }
 
@@ -103,8 +118,33 @@ impl Game {
         self.turn_order[self.current_turn]
     }
 
-    pub fn next_player(&mut self) {
-        self.current_turn = (self.current_turn + 1) % self.turn_order.len();
+    pub fn next_player(&mut self) -> Result<(), GameError> {
+        if let GameStatus::Placement(Placement { turn }) = self.status {
+            match turn {
+                1 => {
+                    if self.current_turn == self.turn_order.len() - 1 {
+                        self.set_status(GameStatus::Placement(Placement::new(2)?));
+                        Ok(())
+                    } else {
+                        self.current_turn = self.current_turn + 1;
+                        Ok(())
+                    }
+                }
+                2 => {
+                    if self.current_turn == 0 {
+                        self.set_status(GameStatus::Playing);
+                        Ok(())
+                    } else {
+                        self.current_turn = self.current_turn - 1;
+                        Ok(())
+                    }
+                },
+                _ => unreachable!()
+            }
+        } else {
+            self.current_turn = (self.current_turn + 1) % self.turn_order.len();
+            Ok(())
+        }
     }
 
     pub fn set_players_order(&mut self, rolls: Vec<Roll>) -> Result<(), GameError> {
@@ -249,7 +289,8 @@ mod tests {
                 Player::new(PlayerColor::Blue),
                 Player::new(PlayerColor::Red),
             ],
-        ).unwrap();
+        )
+        .unwrap();
 
         game.start(&terrains).unwrap();
         game.next_player();
@@ -264,7 +305,7 @@ mod tests {
         game.players[1].receive(Resource::Stone, 3);
         game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(4))
             .unwrap();
-        game.set_status(GameStatus::Placement(1));
+        game.set_status(GameStatus::Placement(Placement::new(1).unwrap()));
         game.next_player();
 
         game
@@ -468,21 +509,102 @@ mod tests {
 
     #[test]
     fn test_players_order() {
-        let mut game = Game::new(Scenario::test_scenario(), vec![Player::new(PlayerColor::Blue), Player::new(PlayerColor::White) ,Player::new(PlayerColor::Red), Player::new(PlayerColor::Orange)]).unwrap();
+        let mut game = Game::new(
+            Scenario::test_scenario(),
+            vec![
+                Player::new(PlayerColor::Blue),
+                Player::new(PlayerColor::White),
+                Player::new(PlayerColor::Red),
+                Player::new(PlayerColor::Orange),
+            ],
+        )
+        .unwrap();
 
-        assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(6, 2).unwrap(), Roll::new(3, 3).unwrap()]), Err(GameError::WrongRollCount));
-        assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(6, 2).unwrap(), Roll::new(3, 3).unwrap(), Roll::new(4, 4).unwrap()]), Err(GameError::TiedRolls));
-        assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(3, 2).unwrap(), Roll::new(3, 3).unwrap(), Roll::new(4, 4).unwrap()]), Ok(()));
-        assert_eq!(game.turn_order, vec![PlayerId::new(3), PlayerId::new(0), PlayerId::new(1), PlayerId::new(2)]);
-        assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(6, 4).unwrap(), Roll::new(3, 3).unwrap(), Roll::new(4, 4).unwrap()]), Ok(()));
-        assert_eq!(game.turn_order, vec![PlayerId::new(1), PlayerId::new(2), PlayerId::new(3), PlayerId::new(0)]);
+        assert_eq!(
+            game.set_players_order(vec![
+                Roll::new(1, 1).unwrap(),
+                Roll::new(6, 2).unwrap(),
+                Roll::new(3, 3).unwrap()
+            ]),
+            Err(GameError::WrongRollCount)
+        );
+        assert_eq!(
+            game.set_players_order(vec![
+                Roll::new(1, 1).unwrap(),
+                Roll::new(6, 2).unwrap(),
+                Roll::new(3, 3).unwrap(),
+                Roll::new(4, 4).unwrap()
+            ]),
+            Err(GameError::TiedRolls)
+        );
+        assert_eq!(
+            game.set_players_order(vec![
+                Roll::new(1, 1).unwrap(),
+                Roll::new(3, 2).unwrap(),
+                Roll::new(3, 3).unwrap(),
+                Roll::new(4, 4).unwrap()
+            ]),
+            Ok(())
+        );
+        assert_eq!(
+            game.turn_order,
+            vec![
+                PlayerId::new(3),
+                PlayerId::new(0),
+                PlayerId::new(1),
+                PlayerId::new(2)
+            ]
+        );
+        assert_eq!(
+            game.set_players_order(vec![
+                Roll::new(1, 1).unwrap(),
+                Roll::new(6, 4).unwrap(),
+                Roll::new(3, 3).unwrap(),
+                Roll::new(4, 4).unwrap()
+            ]),
+            Ok(())
+        );
+        assert_eq!(
+            game.turn_order,
+            vec![
+                PlayerId::new(1),
+                PlayerId::new(2),
+                PlayerId::new(3),
+                PlayerId::new(0)
+            ]
+        );
     }
 
     #[test]
     fn test_turn_order() {
-        let mut game = Game::new(Scenario::test_scenario(), vec![Player::new(PlayerColor::Blue), Player::new(PlayerColor::White) ,Player::new(PlayerColor::Red), Player::new(PlayerColor::Orange)]).unwrap();
-        assert_eq!(game.set_players_order(vec![Roll::new(1, 1).unwrap(), Roll::new(3, 2).unwrap(), Roll::new(3, 3).unwrap(), Roll::new(4, 4).unwrap()]), Ok(()));
-        assert_eq!(game.turn_order, vec![PlayerId::new(3), PlayerId::new(0), PlayerId::new(1), PlayerId::new(2)]);
+        let mut game = Game::new(
+            Scenario::test_scenario(),
+            vec![
+                Player::new(PlayerColor::Blue),
+                Player::new(PlayerColor::White),
+                Player::new(PlayerColor::Red),
+                Player::new(PlayerColor::Orange),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            game.set_players_order(vec![
+                Roll::new(1, 1).unwrap(),
+                Roll::new(3, 2).unwrap(),
+                Roll::new(3, 3).unwrap(),
+                Roll::new(4, 4).unwrap()
+            ]),
+            Ok(())
+        );
+        assert_eq!(
+            game.turn_order,
+            vec![
+                PlayerId::new(3),
+                PlayerId::new(0),
+                PlayerId::new(1),
+                PlayerId::new(2)
+            ]
+        );
         assert_eq!(game.current_player(), PlayerId::new(3));
         assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
         game.next_player();
@@ -500,6 +622,5 @@ mod tests {
         game.next_player();
         assert_eq!(game.current_player(), PlayerId::new(3));
         assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
-
     }
 }
