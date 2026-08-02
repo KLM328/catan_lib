@@ -39,7 +39,7 @@ impl From<InvalidBoard> for GameError {
 #[derive(Copy, Clone, Debug)]
 pub enum GameStatus {
     Starting,
-    Placement,
+    Placement(u8),
     Playing,
     End,
 }
@@ -87,7 +87,7 @@ impl Game {
     }
     pub fn start(&mut self, shuffled: &[Terrain]) -> Result<(), GameError> {
         self.board = Some(self.scenario.layout(shuffled)?);
-        self.set_status(GameStatus::Placement);
+        self.set_status(GameStatus::Placement(1));
         Ok(())
     }
 
@@ -126,7 +126,7 @@ impl Game {
     pub fn playable_status(&self) -> Result<(), GameError> {
         match self.status {
             GameStatus::Starting => Err(GameError::GameIsStarting),
-            GameStatus::Placement => Ok(()),
+            GameStatus::Placement(_) => Ok(()),
             GameStatus::Playing => Ok(()),
             GameStatus::End => Err(GameError::GameOver),
         }
@@ -252,7 +252,6 @@ mod tests {
         ).unwrap();
 
         game.start(&terrains).unwrap();
-        game.set_status(GameStatus::Placement);
         game.next_player();
         game.build_settlement(PlayerId::new(1), VertexId::new(4))
             .unwrap();
@@ -265,7 +264,7 @@ mod tests {
         game.players[1].receive(Resource::Stone, 3);
         game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(4))
             .unwrap();
-        game.set_status(GameStatus::Placement);
+        game.set_status(GameStatus::Placement(1));
         game.next_player();
 
         game
