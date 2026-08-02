@@ -1,4 +1,4 @@
-use crate::{EdgeId, GameStatus, PlayerId};
+use crate::{EdgeId, GameStatus, PlayerId, Resource};
 use crate::{Roll, TileId, Topology, VertexId};
 use std::fmt;
 
@@ -59,7 +59,7 @@ pub enum InvalidAction {
     RoadMustStartFromNewSettlement,
     NotYourSettlement(VertexId),
 
-    InvalidGameStatus
+    InvalidGameStatus,
 }
 
 impl fmt::Display for InvalidAction {
@@ -218,8 +218,10 @@ impl Board {
             vertices.push(vertex);
             if !vertices.iter().all(|v| self.buildings[v.value()].is_none()) {
                 Err(InvalidAction::TooCloseToBuilding(vertex))
-            } else if matches!(game_status, GameStatus::FirstPlacementSettlement | GameStatus::SecondPlacementSettlement)
-                || connected_edges
+            } else if matches!(
+                game_status,
+                GameStatus::FirstPlacementSettlement | GameStatus::SecondPlacementSettlement
+            ) || connected_edges
                 .iter()
                 .any(|&e_id| self.roads[e_id.value()] == Some(player))
             {
@@ -246,7 +248,10 @@ impl Board {
                     .iter()
                     .for_each(|&v| connected_edges.extend(self.topology().connected_edges(v)));
 
-                if matches!(game_status, GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad) {
+                if matches!(
+                    game_status,
+                    GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad
+                ) {
                     let player_buildings = endpoints
                         .iter()
                         .filter(|&&v| {
@@ -259,7 +264,10 @@ impl Board {
                         .copied()
                         .collect::<Vec<VertexId>>();
                     if player_buildings.is_empty()
-                        && matches!(game_status, GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad)
+                        && matches!(
+                            game_status,
+                            GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad
+                        )
                     {
                         Err(InvalidAction::RoadMustStartFromNewSettlement)
                     } else if player_buildings.iter().any(|&v| {
@@ -270,13 +278,16 @@ impl Board {
                     }) {
                         Ok(())
                     } else {
-                        if matches!(game_status, GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad) {
+                        if matches!(
+                            game_status,
+                            GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad
+                        ) {
                             Err(InvalidAction::RoadMustStartFromNewSettlement)
                         } else {
                             Err(InvalidAction::NotConnected)
                         }
                     }
-                } else if matches!(game_status, GameStatus::Playing ) {
+                } else if matches!(game_status, GameStatus::Playing) {
                     if endpoints.iter().any(|&v| {
                         if let Some(building) = self.buildings[v.value()] {
                             building.owner() == player
@@ -296,90 +307,97 @@ impl Board {
                 }
             }
         } else {
-    Err(InvalidAction::UnexistingEdge(edge))
+            Err(InvalidAction::UnexistingEdge(edge))
+        }
     }
-}
 
-pub(crate) fn place_road(
-    &mut self,
-    game_status: GameStatus,
-    edge: EdgeId,
-    player: PlayerId,
-) -> Result<(), InvalidAction> {
-    if self.roads.get(edge.value()).is_none() {
-        Err(InvalidAction::UnexistingEdge(edge))
-    } else {
-        self.can_place_road(game_status, edge, player)?;
-        self.roads[edge.value()] = Some(player);
+    pub(crate) fn place_road(
+        &mut self,
+        game_status: GameStatus,
+        edge: EdgeId,
+        player: PlayerId,
+    ) -> Result<(), InvalidAction> {
+        if self.roads.get(edge.value()).is_none() {
+            Err(InvalidAction::UnexistingEdge(edge))
+        } else {
+            self.can_place_road(game_status, edge, player)?;
+            self.roads[edge.value()] = Some(player);
+            Ok(())
+        }
+    }
+
+    pub(crate) fn place_settlement(
+        &mut self,
+        game_status: GameStatus,
+        vertex: VertexId,
+        player: PlayerId,
+    ) -> Result<(), InvalidAction> {
+        self.can_place_building(game_status, vertex, player)?;
+        self.buildings[vertex.value()] = Some(Building::new(BuildingKind::Settlement, player));
         Ok(())
     }
-}
 
-pub(crate) fn place_settlement(
-    &mut self,
-    game_status: GameStatus,
-    vertex: VertexId,
-    player: PlayerId,
-) -> Result<(), InvalidAction> {
-    self.can_place_building(game_status, vertex, player)?;
-    self.buildings[vertex.value()] = Some(Building::new(BuildingKind::Settlement, player));
-    Ok(())
-}
-
-pub(crate) fn move_robber(&mut self, tile_id: TileId) -> Result<(), InvalidAction> {
-    let option_tile = self.tiles.get(tile_id.value());
-    match option_tile {
-        Some(tile) => {
-            if matches!(tile, Tile::Desert) {
-                Err(InvalidAction::RobberNotOnDesert)
-            } else {
-                self.robber = tile_id;
-                Ok(())
-            }
-        }
-        None => Err(InvalidAction::UnexistingTile(tile_id)),
-    }
-}
-
-pub(crate) fn can_upgrade_settlement_to_city(
-    &self,
-    vertex: VertexId,
-    player: PlayerId,
-) -> Result<(), InvalidAction> {
-    if vertex.value() >= self.topology.vertex_count() {
-        Err(InvalidAction::UnexistingVertex(vertex))
-    } else {
-        if let Some(building) = self.buildings[vertex.value()] {
-            if matches!(building.kind(), BuildingKind::Settlement) {
-                if building.owner() == player {
-                    Ok(())
+    pub(crate) fn move_robber(&mut self, tile_id: TileId) -> Result<(), InvalidAction> {
+        let option_tile = self.tiles.get(tile_id.value());
+        match option_tile {
+            Some(tile) => {
+                if matches!(tile, Tile::Desert) {
+                    Err(InvalidAction::RobberNotOnDesert)
                 } else {
-                    Err(InvalidAction::NotYourSettlement(vertex))
+                    self.robber = tile_id;
+                    Ok(())
+                }
+            }
+            None => Err(InvalidAction::UnexistingTile(tile_id)),
+        }
+    }
+
+    pub(crate) fn can_upgrade_settlement_to_city(
+        &self,
+        vertex: VertexId,
+        player: PlayerId,
+    ) -> Result<(), InvalidAction> {
+        if vertex.value() >= self.topology.vertex_count() {
+            Err(InvalidAction::UnexistingVertex(vertex))
+        } else {
+            if let Some(building) = self.buildings[vertex.value()] {
+                if matches!(building.kind(), BuildingKind::Settlement) {
+                    if building.owner() == player {
+                        Ok(())
+                    } else {
+                        Err(InvalidAction::NotYourSettlement(vertex))
+                    }
+                } else {
+                    Err(InvalidAction::IsNotSettlement(vertex))
                 }
             } else {
-                Err(InvalidAction::IsNotSettlement(vertex))
+                Err(InvalidAction::UnexistingBuilding(vertex))
             }
-        } else {
-            Err(InvalidAction::UnexistingBuilding(vertex))
         }
     }
-}
 
-pub(crate) fn upgrade_settlement_to_city(
-    &mut self,
-    vertex: VertexId,
-    player: PlayerId,
-) -> Result<(), InvalidAction> {
-    self.can_upgrade_settlement_to_city(vertex, player)?;
-    self.buildings[vertex.value()] = Some(Building::new(BuildingKind::City, player));
-    Ok(())
-}
+    pub(crate) fn upgrade_settlement_to_city(
+        &mut self,
+        vertex: VertexId,
+        player: PlayerId,
+    ) -> Result<(), InvalidAction> {
+        self.can_upgrade_settlement_to_city(vertex, player)?;
+        self.buildings[vertex.value()] = Some(Building::new(BuildingKind::City, player));
+        Ok(())
+    }
+
+    pub(crate) fn resources_around(&self, vertex: VertexId) -> Vec<Resource> {
+        self.topology.tile_vertices().iter().enumerate()
+            .filter(|(_, vs)| vs.contains(&vertex))
+            .filter_map(|(i, _)| self.tiles()[i].resource())
+            .collect()
+    }
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::{NumberToken};
+    use crate::NumberToken;
     use crate::board::production::{Gain, Production};
     use crate::player::PlayerId;
     use crate::resource::Resource;
@@ -395,24 +413,36 @@ pub mod tests {
             ],
             TileId::new(2),
         )
-            .unwrap()
+        .unwrap()
     }
 
     pub(crate) fn init_board() -> Board {
         let mut board = init_board_without_buildings();
         board
-            .place_settlement(GameStatus::FirstPlacementSettlement, VertexId::new(4), PlayerId::new(1))
+            .place_settlement(
+                GameStatus::FirstPlacementSettlement,
+                VertexId::new(4),
+                PlayerId::new(1),
+            )
             .unwrap();
         board
             .upgrade_settlement_to_city(VertexId::new(4), PlayerId::new(1))
             .unwrap();
         board
-            .place_settlement(GameStatus::FirstPlacementSettlement, VertexId::new(8), PlayerId::new(1))
+            .place_settlement(
+                GameStatus::FirstPlacementSettlement,
+                VertexId::new(8),
+                PlayerId::new(1),
+            )
             .unwrap();
         board.move_robber(TileId::new(1)).unwrap();
 
         board
-            .place_road(GameStatus::FirstPlacementRoad, EdgeId::new(5), PlayerId::new(1))
+            .place_road(
+                GameStatus::FirstPlacementRoad,
+                EdgeId::new(5),
+                PlayerId::new(1),
+            )
             .unwrap();
         board
     }
@@ -457,7 +487,11 @@ pub mod tests {
         let board = init_board_without_buildings();
         assert!(
             board
-                .can_place_building(GameStatus::FirstPlacementSettlement, VertexId::new(0), PlayerId::new(1))
+                .can_place_building(
+                    GameStatus::FirstPlacementSettlement,
+                    VertexId::new(0),
+                    PlayerId::new(1)
+                )
                 .is_ok()
         );
     }
@@ -475,7 +509,11 @@ pub mod tests {
     fn test_can_place_building_ko_neighbor() {
         let board = init_board();
         assert!(matches!(
-            board.can_place_building(GameStatus::FirstPlacementSettlement, VertexId::new(3), PlayerId::new(0)),
+            board.can_place_building(
+                GameStatus::FirstPlacementSettlement,
+                VertexId::new(3),
+                PlayerId::new(0)
+            ),
             Err(InvalidAction::TooCloseToBuilding(_))
         ));
     }
@@ -513,12 +551,20 @@ pub mod tests {
         let mut board = init_board();
         assert!(
             board
-                .can_place_road(GameStatus::FirstPlacementRoad, EdgeId::new(9), PlayerId::new(1))
+                .can_place_road(
+                    GameStatus::FirstPlacementRoad,
+                    EdgeId::new(9),
+                    PlayerId::new(1)
+                )
                 .is_ok()
         );
         assert!(
             board
-                .can_place_road(GameStatus::FirstPlacementRoad, EdgeId::new(10), PlayerId::new(1))
+                .can_place_road(
+                    GameStatus::FirstPlacementRoad,
+                    EdgeId::new(10),
+                    PlayerId::new(1)
+                )
                 .is_ok()
         );
     }
@@ -527,11 +573,19 @@ pub mod tests {
     fn test_can_place_road_during_placement_ko() {
         let mut board = init_board();
         assert_eq!(
-            board.can_place_road(GameStatus::FirstPlacementRoad, EdgeId::new(9), PlayerId::new(0)),
+            board.can_place_road(
+                GameStatus::FirstPlacementRoad,
+                EdgeId::new(9),
+                PlayerId::new(0)
+            ),
             Err(InvalidAction::RoadMustStartFromNewSettlement)
         );
         assert_eq!(
-            board.can_place_road(GameStatus::FirstPlacementRoad, EdgeId::new(11), PlayerId::new(1)),
+            board.can_place_road(
+                GameStatus::FirstPlacementRoad,
+                EdgeId::new(11),
+                PlayerId::new(1)
+            ),
             Err(InvalidAction::RoadMustStartFromNewSettlement)
         );
     }
@@ -540,11 +594,19 @@ pub mod tests {
     fn test_can_place_road_during_placement_ko_two_road_to_the_same_building() {
         let mut board = init_board();
         assert!(matches!(
-            board.can_place_road(GameStatus::FirstPlacementRoad, EdgeId::new(4), PlayerId::new(1)),
+            board.can_place_road(
+                GameStatus::FirstPlacementRoad,
+                EdgeId::new(4),
+                PlayerId::new(1)
+            ),
             Err(InvalidAction::RoadMustStartFromNewSettlement)
         ));
         assert!(matches!(
-            board.can_place_road(GameStatus::FirstPlacementRoad, EdgeId::new(5), PlayerId::new(1)),
+            board.can_place_road(
+                GameStatus::FirstPlacementRoad,
+                EdgeId::new(5),
+                PlayerId::new(1)
+            ),
             Err(InvalidAction::EdgeOccupied(_))
         ));
     }
@@ -553,11 +615,19 @@ pub mod tests {
     fn test_can_place_road_during_placement_ko_second_road_consecutive_to_first_road() {
         let mut board = init_board();
         assert_eq!(
-            board.can_place_road(GameStatus::FirstPlacementRoad, EdgeId::new(0), PlayerId::new(1)),
+            board.can_place_road(
+                GameStatus::FirstPlacementRoad,
+                EdgeId::new(0),
+                PlayerId::new(1)
+            ),
             Err(InvalidAction::RoadMustStartFromNewSettlement)
         );
         assert!(matches!(
-            board.can_place_road(GameStatus::FirstPlacementRoad, EdgeId::new(4), PlayerId::new(1)),
+            board.can_place_road(
+                GameStatus::FirstPlacementRoad,
+                EdgeId::new(4),
+                PlayerId::new(1)
+            ),
             Err(InvalidAction::RoadMustStartFromNewSettlement)
         ));
     }
@@ -634,12 +704,20 @@ pub mod tests {
         let mut board = init_board();
         assert!(
             board
-                .place_road(GameStatus::FirstPlacementRoad, EdgeId::new(0), PlayerId::new(1))
+                .place_road(
+                    GameStatus::FirstPlacementRoad,
+                    EdgeId::new(0),
+                    PlayerId::new(1)
+                )
                 .is_err()
         );
         assert!(
             board
-                .place_road(GameStatus::FirstPlacementRoad, EdgeId::new(4), PlayerId::new(1))
+                .place_road(
+                    GameStatus::FirstPlacementRoad,
+                    EdgeId::new(4),
+                    PlayerId::new(1)
+                )
                 .is_err()
         );
         assert_eq!(board.roads[9], None);
@@ -651,9 +729,24 @@ pub mod tests {
         let mut board = init_board();
         assert!(
             board
-                .place_road(GameStatus::FirstPlacementRoad, EdgeId::new(10), PlayerId::new(1))
+                .place_road(
+                    GameStatus::FirstPlacementRoad,
+                    EdgeId::new(10),
+                    PlayerId::new(1)
+                )
                 .is_ok()
         );
         assert_eq!(board.roads[10].unwrap(), PlayerId::new(1));
+    }
+
+    #[test]
+    fn test_resources_around() {
+        let board = init_board();
+        let expected_resources : Vec<Resource> = vec![Resource::Wood];
+        assert_eq!(board.resources_around(VertexId::new(4)), expected_resources);
+        let expected_resources : Vec<Resource> = vec![Resource::Brick];
+        assert_eq!(board.resources_around(VertexId::new(8)), expected_resources);
+        let expected_resources : Vec<Resource> = vec![Resource::Wood, Resource::Brick];
+        assert_eq!(board.resources_around(VertexId::new(0)), expected_resources);
     }
 }

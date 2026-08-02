@@ -192,18 +192,15 @@ impl Game {
         self.check_player(player_id)?;
         let current_status = self.status;
 
-        self.board
-            .as_ref()
-            .unwrap()
-            .can_place_road(self.status, edge, player_id)?;
+        self.board()?.can_place_road(self.status, edge, player_id)?;
 
         if matches!(self.status, GameStatus::Playing) {
             self.get_player_mut(player_id)?.pay(&Cost::ROAD)?;
         }
-        self.end_placement_turn();
+
         self.board_mut()?
             .place_road(current_status, edge, player_id)?;
-
+        self.end_placement_turn();
         Ok(())
     }
 
@@ -222,14 +219,19 @@ impl Game {
             self.get_player_mut(player_id)?.pay(&Cost::SETTLEMENT)?;
         }
         self.board_mut()?.place_settlement(current_status, vertex, player_id)?;
-        
+
         if matches!(self.status, GameStatus::SecondPlacementSettlement) {
-            let tiles_ids : Vec<usize> = self.board()?.topology().tile_vertices().iter().enumerate().filter(|(_, vertices)| vertices.contains(&vertex)).map(|(index, _)| index).collect();
-            let resources: Vec<Resource> = tiles_ids.iter().map(|&index| {self.board().unwrap().tiles()[index].resource()}).flatten().collect();
-            for r in resources {
+            for r in self.board()?.resources_around(vertex) {
                 self.get_player_mut(self.current_player())?.receive(r, 1);
             }
         }
+
+        self.status = match self.status {
+            GameStatus::FirstPlacementSettlement  => GameStatus::FirstPlacementRoad,
+            GameStatus::SecondPlacementSettlement => GameStatus::SecondPlacementRoad,
+            other => other,
+        };
+
         Ok(())
     }
 
@@ -269,474 +271,22 @@ impl Game {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use crate::InvalidAction::{
-//         EdgeOccupied, NotConnected, NotYourSettlement, RoadMustStartFromNewSettlement,
-//         TooCloseToBuilding, UnexistingEdge, UnexistingVertex,
-//     };
-//     use crate::board::BuildingKind::{City, Settlement};
-//     use crate::player::PlayerColor;
-//     use crate::{Building, Resource, ResourceCounts};
-// 
-//     fn init_game() -> Game {
-//         let scenario = Scenario::test_scenario();
-//         let terrains = scenario.terrains().to_vec();
-//         let mut game = Game::new(
-//             scenario,
-//             vec![
-//                 Player::new(PlayerColor::Blue),
-//                 Player::new(PlayerColor::Red),
-//             ],
-//         )
-//         .unwrap();
-// 
-//         game.start(&terrains).unwrap();
-//         game.build_settlement(game.current_player(), VertexId::new(12))
-//             .unwrap();
-//         game.build_road(game.current_player(), EdgeId::new(14))
-//             .unwrap();
-// 
-//         game.build_settlement(game.current_player(), VertexId::new(4))
-//             .unwrap();
-//         game.build_road(game.current_player(), EdgeId::new(5))
-//             .unwrap();
-// 
-//         game.build_settlement(PlayerId::new(1), VertexId::new(8))
-//             .unwrap();
-//         game.build_road(PlayerId::new(1), EdgeId::new(10)).unwrap();
-// 
-//         game.set_status(GameStatus::Playing);
-//         game.next_player().unwrap();
-//         game.players[1].receive(Resource::Wheat, 2);
-//         game.players[1].receive(Resource::Stone, 3);
-//         game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(4))
-//             .unwrap();
-// 
-//         game.next_player(); //J0
-//         game.set_status(GameStatus::FirstPlacement);
-// 
-//         game
-//     }
-// 
-//     #[test]
-//     fn test_apply_roll_with_production() {
-//         let mut game = init_game();
-//         println!("{:?}", game.board());
-//         game.apply_roll(Roll::new(2, 4).unwrap()).unwrap();
-//         assert_eq!(
-//             game.players[1].hand().resources(),
-//             ResourceCounts::new([2, 0, 0, 0, 0])
-//         );
-//     }
-// 
-//     #[test]
-//     fn test_apply_roll_with_robber() {
-//         let mut game = init_game();
-//         game.players[0].receive(Resource::Wood, 3);
-//         game.players[0].receive(Resource::Wheat, 2);
-//         game.players[0].receive(Resource::Stone, 2);
-//         assert_eq!(
-//             game.apply_roll(Roll::new(4, 3).unwrap()),
-//             Ok(RollOutcome::RobberActivated {
-//                 must_discard: vec![]
-//             })
-//         );
-//         game.players[0].receive(Resource::Brick, 1);
-//         assert_eq!(
-//             game.apply_roll(Roll::new(4, 3).unwrap()),
-//             Ok(RollOutcome::RobberActivated {
-//                 must_discard: vec![PlayerId::new(0)]
-//             })
-//         )
-//     }
-// 
-//     #[test]
-//     fn test_build_road() {
-//         let mut game = init_game();
-//         assert_eq!(
-//             game.build_road(PlayerId::new(0), EdgeId::new(0)),
-//             Err(GameError::Placement(RoadMustStartFromNewSettlement))
-//         );
-//         game.next_player();
-//         assert_eq!(
-//             game.build_road(PlayerId::new(1), EdgeId::new(0)),
-//             Err(GameError::Placement(RoadMustStartFromNewSettlement))
-//         );
-//         assert_eq!(
-//             game.build_road(PlayerId::new(1), EdgeId::new(7)),
-//             Err(GameError::Placement(RoadMustStartFromNewSettlement))
-//         );
-//         assert_eq!(
-//             game.build_road(PlayerId::new(1), EdgeId::new(4)),
-//             Err(GameError::Placement(RoadMustStartFromNewSettlement))
-//         );
-//         assert!(game.build_road(PlayerId::new(1), EdgeId::new(10)).is_ok()); //Attenttion nouvelle route de placée
-//         assert_eq!(game.board().unwrap().roads()[10], Some(PlayerId::new(1)));
-//         game.set_status(GameStatus::Playing);
-// 
-//         game.set_status(GameStatus::Playing);
-//         assert_eq!(
-//             game.build_road(PlayerId::new(1), EdgeId::new(10)),
-//             Err(GameError::Placement(EdgeOccupied(EdgeId::new(10))))
-//         );
-//         assert_eq!(
-//             game.build_road(PlayerId::new(1), EdgeId::new(6)),
-//             Err(GameError::NotEnoughResources)
-//         );
-//         assert_eq!(
-//             game.build_road(PlayerId::new(1), EdgeId::new(11)),
-//             Err(GameError::Placement(NotConnected))
-//         );
-//         assert_eq!(
-//             game.build_road(PlayerId::new(1), EdgeId::new(114)),
-//             Err(GameError::Placement(UnexistingEdge(EdgeId::new(114))))
-//         );
-//         game.players[1].receive(Resource::Brick, 1);
-//         game.players[1].receive(Resource::Wood, 1);
-//         assert_eq!(game.build_road(PlayerId::new(1), EdgeId::new(6)), Ok(()));
-//         assert_eq!(game.board().unwrap().roads()[6], Some(PlayerId::new(1)));
-//         game.players[1].receive(Resource::Brick, 1);
-//         game.players[1].receive(Resource::Wood, 1);
-//         assert!(game.build_road(PlayerId::new(1), EdgeId::new(7)).is_ok());
-//         assert_eq!(
-//             game.build_road(PlayerId::new(1), EdgeId::new(7)),
-//             Err(GameError::Placement(EdgeOccupied(EdgeId::new(7))))
-//         );
-//         game.set_status(GameStatus::End);
-//         assert_eq!(
-//             game.build_road(PlayerId::new(1), EdgeId::new(6)),
-//             Err(GameError::GameOver)
-//         );
-//     }
-// 
-//     #[test]
-//     fn test_build_settlement() {
-//         let mut game = init_game();
-//         assert_eq!(
-//             game.build_settlement(PlayerId::new(0), VertexId::new(9)),
-//             Err(GameError::Placement(TooCloseToBuilding(VertexId::new(9))))
-//         );
-//         assert_eq!(
-//             game.build_settlement(PlayerId::new(0), VertexId::new(100)),
-//             Err(GameError::Placement(UnexistingVertex(VertexId::new(100))))
-//         );
-//         assert!(
-//             game.build_settlement(PlayerId::new(0), VertexId::new(0))
-//                 .is_ok()
-//         );
-//         assert_eq!(
-//             game.board().unwrap().buildings()[0],
-//             Some(Building::new(Settlement, PlayerId::new(0)))
-//         );
-//         game.build_road(PlayerId::new(0), EdgeId::new(8)).unwrap();
-// 
-//         game.set_status(GameStatus::Playing);
-//         game.players[0].receive(Resource::Brick, 1);
-//         game.players[0].receive(Resource::Wood, 1);
-//         game.build_road(PlayerId::new(0), EdgeId::new(11)).unwrap();
-//         assert_eq!(
-//             game.build_settlement(PlayerId::new(0), VertexId::new(9)),
-//             Err(GameError::Placement(TooCloseToBuilding(VertexId::new(9))))
-//         );
-//         assert_eq!(
-//             game.build_settlement(PlayerId::new(0), VertexId::new(100)),
-//             Err(GameError::Placement(UnexistingVertex(VertexId::new(100))))
-//         );
-//         assert_eq!(
-//             game.build_settlement(PlayerId::new(0), VertexId::new(11)),
-//             Err(GameError::Placement(NotConnected))
-//         );
-//         assert_eq!(
-//             game.build_settlement(PlayerId::new(0), VertexId::new(10)),
-//             Err(GameError::NotEnoughResources)
-//         );
-//         game.players[0].receive(Resource::Brick, 1);
-//         game.players[0].receive(Resource::Wood, 1);
-//         game.players[0].receive(Resource::Wheat, 1);
-//         game.players[0].receive(Resource::Wool, 1);
-//         assert_eq!(
-//             game.build_settlement(PlayerId::new(0), VertexId::new(10)),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.board().unwrap().buildings()[10],
-//             Some(Building::new(Settlement, PlayerId::new(0)))
-//         );
-// 
-//         game.set_status(GameStatus::End);
-//         assert_eq!(
-//             game.build_settlement(PlayerId::new(0), VertexId::new(12)),
-//             Err(GameError::GameOver)
-//         );
-//     }
-// 
-//     #[test]
-//     fn test_upgrade_settlement_to_city() {
-//         let mut game = init_game();
-//         game.set_status(GameStatus::Playing);
-//         assert_eq!(
-//             game.upgrade_settlement_to_city(PlayerId::new(18), VertexId::new(8)),
-//             Err(GameError::NotYourTurn)
-//         );
-// 
-//         assert_eq!(
-//             game.upgrade_settlement_to_city(PlayerId::new(0), VertexId::new(8)),
-//             Err(GameError::Placement(NotYourSettlement(VertexId::new(8))))
-//         );
-//         game.next_player();
-//         assert_eq!(
-//             game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(100)),
-//             Err(GameError::Placement(UnexistingVertex(VertexId::new(100))))
-//         );
-//         assert_eq!(
-//             game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(8)),
-//             Err(GameError::NotEnoughResources)
-//         );
-//         game.players[1].receive(Resource::Wheat, 2);
-//         game.players[1].receive(Resource::Stone, 3);
-//         assert_eq!(
-//             game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(8)),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.board().unwrap().buildings()[4],
-//             Some(Building::new(City, PlayerId::new(1)))
-//         );
-// 
-//         game.set_status(GameStatus::End);
-//         assert_eq!(
-//             game.upgrade_settlement_to_city(PlayerId::new(1), VertexId::new(4)),
-//             Err(GameError::GameOver)
-//         );
-//     }
-// 
-//     #[test]
-//     fn test_players_order() {
-//         let mut game = Game::new(
-//             Scenario::test_scenario(),
-//             vec![
-//                 Player::new(PlayerColor::Blue),
-//                 Player::new(PlayerColor::White),
-//                 Player::new(PlayerColor::Red),
-//                 Player::new(PlayerColor::Orange),
-//             ],
-//         )
-//         .unwrap();
-// 
-//         assert_eq!(
-//             game.set_players_order(vec![
-//                 Roll::new(1, 1).unwrap(),
-//                 Roll::new(6, 2).unwrap(),
-//                 Roll::new(3, 3).unwrap()
-//             ]),
-//             Err(GameError::WrongRollCount)
-//         );
-//         assert_eq!(
-//             game.set_players_order(vec![
-//                 Roll::new(1, 1).unwrap(),
-//                 Roll::new(6, 2).unwrap(),
-//                 Roll::new(3, 3).unwrap(),
-//                 Roll::new(4, 4).unwrap()
-//             ]),
-//             Err(GameError::TiedRolls)
-//         );
-//         assert_eq!(
-//             game.set_players_order(vec![
-//                 Roll::new(1, 1).unwrap(),
-//                 Roll::new(3, 2).unwrap(),
-//                 Roll::new(3, 3).unwrap(),
-//                 Roll::new(4, 4).unwrap()
-//             ]),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.turn_order,
-//             vec![
-//                 PlayerId::new(3),
-//                 PlayerId::new(0),
-//                 PlayerId::new(1),
-//                 PlayerId::new(2)
-//             ]
-//         );
-//         assert_eq!(
-//             game.set_players_order(vec![
-//                 Roll::new(1, 1).unwrap(),
-//                 Roll::new(6, 4).unwrap(),
-//                 Roll::new(3, 3).unwrap(),
-//                 Roll::new(4, 4).unwrap()
-//             ]),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.turn_order,
-//             vec![
-//                 PlayerId::new(1),
-//                 PlayerId::new(2),
-//                 PlayerId::new(3),
-//                 PlayerId::new(0)
-//             ]
-//         );
-//     }
-// 
-//     #[test]
-//     fn test_turn_order() {
-//         let mut game = Game::new(
-//             Scenario::standard(),
-//             vec![
-//                 Player::new(PlayerColor::Blue),
-//                 Player::new(PlayerColor::White),
-//                 Player::new(PlayerColor::Red),
-//                 Player::new(PlayerColor::Orange),
-//             ],
-//         )
-//         .unwrap();
-//         assert_eq!(
-//             game.set_players_order(vec![
-//                 Roll::new(1, 1).unwrap(),
-//                 Roll::new(3, 2).unwrap(),
-//                 Roll::new(3, 3).unwrap(),
-//                 Roll::new(4, 4).unwrap()
-//             ]),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.turn_order,
-//             vec![
-//                 PlayerId::new(3),
-//                 PlayerId::new(0),
-//                 PlayerId::new(1),
-//                 PlayerId::new(2)
-//             ]
-//         );
-//         let tiles = game.scenario.terrains().to_vec();
-//         game.start(&tiles).unwrap();
-//         assert_eq!(game.status(), GameStatus::FirstPlacement);
-// 
-//         assert_eq!(game.current_player(), PlayerId::new(3));
-//         assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
-//         assert_eq!(
-//             game.next_player(),
-//             Err(GameError::PlayerMustPlaceOneSettlementAndOneRoad {
-//                 settlement: 0,
-//                 road: 0
-//             })
-//         );
-//         assert_eq!(
-//             game.build_settlement(game.current_player(), VertexId::new(2)),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.next_player(),
-//             Err(GameError::PlayerMustPlaceOneSettlementAndOneRoad {
-//                 settlement: 1,
-//                 road: 0
-//             })
-//         );
-//         assert_eq!(
-//             game.build_road(game.current_player(), EdgeId::new(2)),
-//             Ok(())
-//         );
-// 
-//         assert_eq!(game.current_player(), PlayerId::new(0));
-//         assert_eq!(game.check_player(PlayerId::new(0)), Ok(()));
-//         assert_eq!(
-//             game.build_settlement(game.current_player(), VertexId::new(4)),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.build_road(game.current_player(), EdgeId::new(4)),
-//             Ok(())
-//         );
-// 
-//         assert_eq!(game.current_player(), PlayerId::new(1));
-//         assert_eq!(game.check_player(PlayerId::new(1)), Ok(()));
-//         assert_eq!(
-//             game.build_settlement(game.current_player(), VertexId::new(8)),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.build_road(game.current_player(), EdgeId::new(9)),
-//             Ok(())
-//         );
-// 
-//         assert_eq!(game.status(), GameStatus::FirstPlacement);
-//         assert_eq!(game.current_player(), PlayerId::new(2));
-//         assert_eq!(game.check_player(PlayerId::new(2)), Ok(()));
-//         assert_eq!(
-//             game.build_settlement(game.current_player(), VertexId::new(12)),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.build_road(game.current_player(), EdgeId::new(15)),
-//             Ok(())
-//         );
-// 
-//         assert_eq!(game.status(), GameStatus::SecondPlacement);
-//         assert_eq!(game.current_player(), PlayerId::new(2));
-//         assert_eq!(game.check_player(PlayerId::new(2)), Ok(()));
-//         assert_eq!(
-//             game.build_settlement(game.current_player(), VertexId::new(17)),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.build_road(game.current_player(), EdgeId::new(16)),
-//             Ok(())
-//         );
-// 
-//         assert_eq!(game.current_player(), PlayerId::new(1));
-//         assert_eq!(game.check_player(PlayerId::new(1)), Ok(()));
-//         assert_eq!(
-//             game.build_settlement(game.current_player(), VertexId::new(21)),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.build_road(game.current_player(), EdgeId::new(21)),
-//             Ok(())
-//         );
-// 
-//         assert_eq!(game.current_player(), PlayerId::new(0));
-//         assert_eq!(game.check_player(PlayerId::new(0)), Ok(()));
-//         assert_eq!(
-//             game.build_settlement(game.current_player(), VertexId::new(19)),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.build_road(game.current_player(), EdgeId::new(22)),
-//             Ok(())
-//         );
-// 
-//         assert_eq!(game.status(), GameStatus::SecondPlacement);
-//         assert_eq!(game.current_player(), PlayerId::new(3));
-//         assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
-//         assert_eq!(
-//             game.build_settlement(game.current_player(), VertexId::new(23)),
-//             Ok(())
-//         );
-//         assert_eq!(
-//             game.build_road(game.current_player(), EdgeId::new(27)),
-//             Ok(())
-//         );
-// 
-//         assert_eq!(game.status(), GameStatus::Playing);
-//         assert_eq!(game.current_player(), PlayerId::new(3));
-//         assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
-// 
-//         game.next_player().unwrap();
-//         assert_eq!(game.current_player(), PlayerId::new(0));
-//         assert_eq!(game.check_player(PlayerId::new(0)), Ok(()));
-// 
-//         game.next_player().unwrap();
-//         assert_eq!(game.current_player(), PlayerId::new(1));
-//         assert_eq!(game.check_player(PlayerId::new(1)), Ok(()));
-// 
-//         game.next_player().unwrap();
-//         assert_eq!(game.current_player(), PlayerId::new(2));
-//         assert_eq!(game.check_player(PlayerId::new(2)), Ok(()));
-// 
-//         game.next_player().unwrap();
-//         assert_eq!(game.current_player(), PlayerId::new(3));
-//         assert_eq!(game.check_player(PlayerId::new(3)), Ok(()));
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn partie_complete() {
+        // 1. création + ordre des joueurs par les dés
+        // 2. start() avec un agencement fixe (terrains non mélangés)
+        // 3. phase de placement : boucle sur les 6 tours du serpentin
+        //    - à chaque tour : vérifier current_player() et status()
+        //    - poser colonie puis route
+        //    - vérifier qu'une route avant la colonie est refusée
+        // 4. vérifier le crédit des ressources de la 2e colonie
+        // 5. status == Playing, current_player == premier joueur
+        // 6. quelques tours : apply_roll, build_road, next_player
+        // 7. vérifier NotYourTurn pour un joueur hors tour
+    }
+    
+}
