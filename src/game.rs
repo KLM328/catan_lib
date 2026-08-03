@@ -292,9 +292,10 @@ impl Game {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use super::*;
     use crate::player::PlayerColor;
-    use crate::{NumberToken, ResourceCounts, Tile};
+    use crate::{Building, NumberToken, ResourceCounts, Tile};
 
     #[test]
     fn partie_complete() {
@@ -335,6 +336,8 @@ mod tests {
             vec![PlayerId::new(1), PlayerId::new(2), PlayerId::new(0)]
         );
         assert_eq!(game.current_player(), PlayerId::new(1));
+
+        assert_eq!(game.next_player(), Err(GameError::InvalidGameStatus));
 
         assert_eq!(game.status(), GameStatus::Starting);
 
@@ -415,11 +418,8 @@ mod tests {
         );
         assert_eq!(game.start(&game.scenario.terrains().to_vec()), Ok(()));
 
-        // 3. phase de placement : boucle sur les 6 tours du serpentin
-        //    - à chaque tour : vérifier current_player() et status()
-        //    - poser colonie puis route
-        //    - vérifier qu'une route avant la colonie est refusée
         assert_eq!(game.status(), GameStatus::FirstPlacementSettlement);
+        assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
         assert_eq!(game.current_player(), PlayerId::new(1));
         assert_eq!(
             game.build_road(game.current_player(), EdgeId::new(46)),
@@ -442,6 +442,7 @@ mod tests {
         );
         assert_eq!(game.current_player(), PlayerId::new(1));
         assert_eq!(game.status(), GameStatus::FirstPlacementRoad);
+        assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
         assert_eq!(
             game.build_settlement(game.current_player(), VertexId::new(12)),
             Err(GameError::InvalidGameStatus)
@@ -520,6 +521,8 @@ mod tests {
         );
 
         assert_eq!(game.status(), GameStatus::SecondPlacementSettlement);
+        assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
+
         assert_eq!(game.current_player(), PlayerId::new(0));
         assert_eq!(
             game.build_settlement(game.current_player(), VertexId::new(20)),
@@ -533,6 +536,7 @@ mod tests {
         );
 
         assert_eq!(game.status(), GameStatus::SecondPlacementRoad);
+        assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
         assert_eq!(game.current_player(), PlayerId::new(0));
         assert_eq!(
             game.build_road(game.current_player(), EdgeId::new(49)),
@@ -594,7 +598,65 @@ mod tests {
         assert_eq!(game.status(), GameStatus::Playing);
         assert_eq!(game.current_player(), PlayerId::new(1));
 
-        // 6. quelques tours : apply_roll, build_road, next_player
+
+        assert_eq!(game.apply_roll(Roll::new(4,5).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,0,1,0,0])]))));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 1, 1, 0, 1]));
+        assert_eq!(game.build_road(PlayerId::new(2), EdgeId::new(8)), Err(GameError::NotYourTurn));
+        assert_eq!(game.build_road(game.current_player(), EdgeId::new(8)), Ok(()));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 1, 0, 0, 1]));
+        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(7)), Err(GameError::NotEnoughResources));
+        assert_eq!(game.build_road(game.current_player(), EdgeId::new(7)), Err(GameError::NotEnoughResources));
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.current_player(), PlayerId::new(2));
+        assert_eq!(game.apply_roll(Roll::new(3,6).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,0,1,0,0])]))));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 1, 1, 0, 1]));
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.current_player(), PlayerId::new(0));
+        assert_eq!(game.apply_roll(Roll::new(3,3).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,1,0,0,0]), (PlayerId::new(2), [1,0,0,0,0])]))));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 2, 1, 0, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 1, 1, 0]));
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.current_player(), PlayerId::new(1));
+        assert_eq!(game.apply_roll(Roll::new(6,4).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(0), [1,0,0,0,0]), (PlayerId::new(1), [0,0,0,1,0]),  (PlayerId::new(2), [0,0,0,1,0])]))));
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([2, 0, 0, 1, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 2, 1, 1, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 1, 2, 0]));
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.current_player(), PlayerId::new(2));
+        assert_eq!(game.apply_roll(Roll::new(4,6).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(0), [1,0,0,0,0]), (PlayerId::new(1), [0,0,0,1,0]),  (PlayerId::new(2), [0,0,0,1,0])]))));
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 1, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 2, 1, 2, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 1, 3, 0]));
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.current_player(), PlayerId::new(0));
+        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,1,0,0,0]), (PlayerId::new(2), [1,0,0,0,0])]))));
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 1, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 3, 1, 2, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 1, 3, 0]));
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.current_player(), PlayerId::new(1));
+        assert_eq!(game.apply_roll(Roll::new(3,2).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(0), [0,0,0,1,0]), (PlayerId::new(1), [1,0,0,0,0])]))));
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 2, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 3, 1, 2, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 1, 3, 0]));
+        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(20)), Err(GameError::Placement(InvalidAction::NotYourSettlement(VertexId::new(20)))));
+        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(2)), Err(GameError::Placement(InvalidAction::UnexistingBuilding(VertexId::new(2)))));
+        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(1)), Ok(()));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 0, 1, 0, 1]));
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.current_player(), PlayerId::new(2));
+
+
+
+
+        //println!("{:?}", game.board().unwrap().buildings().iter().enumerate().filter(|(_, o)| o.is_some()).collect::<Vec<(usize, &Option<Building>)>>());
 
         // 7. vérifier NotYourTurn pour un joueur hors tour
     }

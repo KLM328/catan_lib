@@ -25,4 +25,15 @@ impl Resource {
             Resource::Wool => 4
         }
     }
+    
+    pub(crate) fn from_index(index: usize) -> Option<Resource> {
+        match index {
+            0 => Some(Resource::Wood),
+            1 => Some(Resource::Stone),
+            2 => Some(Resource::Brick),
+            3 => Some(Resource::Wheat),
+            4 => Some(Resource::Wool),
+            _ => None
+        }
+    }
 }

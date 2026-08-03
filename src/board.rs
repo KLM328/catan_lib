@@ -201,6 +201,7 @@ impl Board {
                 }
             }
         }
+        production.sort();
         production
     }
 

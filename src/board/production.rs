@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use crate::board::production;
 use crate::player::PlayerId;
 use crate::resource::Resource;
 
@@ -14,8 +16,38 @@ pub struct Production {
 }
 
 impl Production {
-    pub(crate) fn add_gain(&mut self, gain: Gain) { self.gains.push(gain) }
+    pub(crate) fn new(entries: &[(PlayerId, [u8; 5])]) -> Self {
+        let mut production = Self::default();
+        for &(player, counts) in entries {
+            for (index, &amount) in counts.iter().enumerate() {
+                if amount > 0 {
+                    production.add_gain(Gain {
+                        player,
+                        resource: Resource::from_index(index).unwrap(),
+                        amount,
+                    });
+                }
+            }
+        }
+        production.sort();
+        production
+    }
+
+    pub(crate) fn add_gain(&mut self, gain: Gain) {
+        if let Some(existing) = self.gains.iter_mut()
+            .find(|g| g.player == gain.player && g.resource == gain.resource)
+        {
+            existing.amount += gain.amount;
+        } else {
+            self.gains.push(gain);
+        }
+    }
+
     pub(crate) fn gains(&self) -> &[Gain] { &self.gains }
+
+    pub fn sort(&mut self) {
+        self.gains.sort_by_key(|g| (g.player.value(), g.resource.index()));
+    }
 }
 
 #[cfg(test)]
