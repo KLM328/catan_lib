@@ -26,14 +26,14 @@ pub struct Player {
 }
 
 impl Player {
-    pub(crate) fn new(color: PlayerColor) -> Self {
+    pub fn new(color: PlayerColor) -> Self {
         Self {
             color,
             hand: Hand::default(),
         }
     }
 
-    pub(crate) fn color(&self) -> PlayerColor {
+    pub fn color(&self) -> PlayerColor {
         self.color
     }
 

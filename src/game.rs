@@ -1,7 +1,6 @@
-use crate::board::BuildingKind;
 use crate::{
     Board, Cost, EdgeId, InvalidAction, InvalidBoard, NotEnoughResources, Player, PlayerId,
-    Production, Resource, Roll, Scenario, Terrain, VertexId,
+    Production, Roll, Scenario, Terrain, VertexId,
 };
 
 #[derive(Debug, PartialEq)]
@@ -76,7 +75,7 @@ impl Game {
                 status: GameStatus::Starting,
                 turn_order: (0..players.len())
                     .into_iter()
-                    .map(|i| PlayerId::new(i))
+                    .map(PlayerId::new)
                     .collect(),
                 current_turn: 0,
                 players,

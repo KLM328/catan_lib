@@ -219,7 +219,7 @@ impl Board {
             let connected_edges = self.topology.connected_edges(vertex);
             vertices.push(vertex);
             if !vertices.iter().all(|v| self.buildings[v.value()].is_none()) {
-                Err(InvalidAction::TooCloseToBuilding(*vertices.iter().filter(|&&v| self.buildings[v.value()].is_some()).last().unwrap()))
+                Err(InvalidAction::TooCloseToBuilding(*vertices.iter().find(|&&v| self.buildings[v.value()].is_some()).unwrap()))
             } else if matches!(
                 game_status,
                 GameStatus::FirstPlacementSettlement | GameStatus::SecondPlacementSettlement
