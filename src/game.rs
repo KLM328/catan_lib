@@ -292,10 +292,9 @@ impl Game {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use super::*;
     use crate::player::PlayerColor;
-    use crate::{Building, NumberToken, ResourceCounts, Tile};
+    use crate::{NumberToken, ResourceCounts, Tile};
 
     #[test]
     fn partie_complete() {
@@ -338,6 +337,8 @@ mod tests {
         assert_eq!(game.current_player(), PlayerId::new(1));
 
         assert_eq!(game.next_player(), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Err(GameError::InvalidGameStatus));
+
 
         assert_eq!(game.status(), GameStatus::Starting);
 
@@ -420,6 +421,8 @@ mod tests {
 
         assert_eq!(game.status(), GameStatus::FirstPlacementSettlement);
         assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
+        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Err(GameError::InvalidGameStatus));
+
         assert_eq!(game.current_player(), PlayerId::new(1));
         assert_eq!(
             game.build_road(game.current_player(), EdgeId::new(46)),
@@ -443,6 +446,8 @@ mod tests {
         assert_eq!(game.current_player(), PlayerId::new(1));
         assert_eq!(game.status(), GameStatus::FirstPlacementRoad);
         assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
+        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Err(GameError::InvalidGameStatus));
+
         assert_eq!(
             game.build_settlement(game.current_player(), VertexId::new(12)),
             Err(GameError::InvalidGameStatus)
@@ -522,6 +527,8 @@ mod tests {
 
         assert_eq!(game.status(), GameStatus::SecondPlacementSettlement);
         assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
+        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Err(GameError::InvalidGameStatus));
+
 
         assert_eq!(game.current_player(), PlayerId::new(0));
         assert_eq!(
@@ -537,6 +544,8 @@ mod tests {
 
         assert_eq!(game.status(), GameStatus::SecondPlacementRoad);
         assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
+        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Err(GameError::InvalidGameStatus));
+
         assert_eq!(game.current_player(), PlayerId::new(0));
         assert_eq!(
             game.build_road(game.current_player(), EdgeId::new(49)),
