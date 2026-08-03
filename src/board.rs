@@ -97,7 +97,7 @@ impl fmt::Display for InvalidAction {
             InvalidAction::TooCloseToBuilding(vertex_id) => {
                 write!(
                     f,
-                    "Le noeud {} est trop proche d'une construction",
+                    "Le noeud est trop pproche du noeud {} où il y a déjà une construction",
                     vertex_id.value()
                 )
             }
@@ -212,12 +212,14 @@ impl Board {
     ) -> Result<(), InvalidAction> {
         if vertex.value() >= self.topology.vertex_count() {
             Err(InvalidAction::UnexistingVertex(vertex))
+        } else if self.buildings[vertex.value()].is_some() {
+            Err(InvalidAction::VertexOccupied(vertex))
         } else {
             let mut vertices = self.topology.vertex_neighbors(vertex);
             let connected_edges = self.topology.connected_edges(vertex);
             vertices.push(vertex);
             if !vertices.iter().all(|v| self.buildings[v.value()].is_none()) {
-                Err(InvalidAction::TooCloseToBuilding(vertex))
+                Err(InvalidAction::TooCloseToBuilding(*vertices.iter().filter(|&&v| self.buildings[v.value()].is_some()).last().unwrap()))
             } else if matches!(
                 game_status,
                 GameStatus::FirstPlacementSettlement | GameStatus::SecondPlacementSettlement
@@ -248,10 +250,7 @@ impl Board {
                     .iter()
                     .for_each(|&v| connected_edges.extend(self.topology().connected_edges(v)));
 
-                if matches!(
-                    game_status,
-                    GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad
-                ) {
+                if matches!(game_status, GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad) {
                     let player_buildings = endpoints
                         .iter()
                         .filter(|&&v| {
@@ -263,12 +262,7 @@ impl Board {
                         })
                         .copied()
                         .collect::<Vec<VertexId>>();
-                    if player_buildings.is_empty()
-                        && matches!(
-                            game_status,
-                            GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad
-                        )
-                    {
+                    if player_buildings.is_empty() {
                         Err(InvalidAction::RoadMustStartFromNewSettlement)
                     } else if player_buildings.iter().any(|&v| {
                         self.topology
@@ -288,13 +282,7 @@ impl Board {
                         }
                     }
                 } else if matches!(game_status, GameStatus::Playing) {
-                    if endpoints.iter().any(|&v| {
-                        if let Some(building) = self.buildings[v.value()] {
-                            building.owner() == player
-                        } else {
-                            false
-                        }
-                    }) || connected_edges
+                    if connected_edges
                         .iter()
                         .any(|&e| self.roads[e.value()] == Some(player))
                     {
@@ -444,6 +432,14 @@ pub mod tests {
                 PlayerId::new(1),
             )
             .unwrap();
+
+        board
+            .place_road(
+                GameStatus::FirstPlacementRoad,
+                EdgeId::new(9),
+                PlayerId::new(1),
+            )
+            .unwrap();
         board
     }
 
@@ -549,23 +545,23 @@ pub mod tests {
     #[test]
     fn test_can_place_road_during_placement_ok() {
         let mut board = init_board();
-        assert!(
+
+        assert_eq!(
             board
-                .can_place_road(
-                    GameStatus::FirstPlacementRoad,
-                    EdgeId::new(9),
+                .place_settlement(
+                    GameStatus::FirstPlacementSettlement,
+                    VertexId::new(6),
                     PlayerId::new(1)
-                )
-                .is_ok()
+                ), Ok(())
         );
-        assert!(
+
+        assert_eq!(
             board
                 .can_place_road(
                     GameStatus::FirstPlacementRoad,
-                    EdgeId::new(10),
+                    EdgeId::new(6),
                     PlayerId::new(1)
-                )
-                .is_ok()
+                ), Ok(())
         );
     }
 
@@ -578,7 +574,7 @@ pub mod tests {
                 EdgeId::new(9),
                 PlayerId::new(0)
             ),
-            Err(InvalidAction::RoadMustStartFromNewSettlement)
+            Err(InvalidAction::EdgeOccupied(EdgeId::new(9)))
         );
         assert_eq!(
             board.can_place_road(
@@ -654,18 +650,12 @@ pub mod tests {
         let mut board = init_board();
         assert!(
             board
-                .can_place_road(GameStatus::Playing, EdgeId::new(9), PlayerId::new(1))
-                .is_ok()
-        );
-        assert!(
-            board
                 .can_place_road(GameStatus::Playing, EdgeId::new(4), PlayerId::new(1))
                 .is_ok()
         );
-        assert!(
+        assert_eq!(
             board
-                .can_place_road(GameStatus::Playing, EdgeId::new(10), PlayerId::new(1))
-                .is_ok()
+                .can_place_road(GameStatus::Playing, EdgeId::new(10), PlayerId::new(1)), Ok(())
         );
     }
 
@@ -720,23 +710,31 @@ pub mod tests {
                 )
                 .is_err()
         );
-        assert_eq!(board.roads[9], None);
+        assert_eq!(board.roads[0], None);
         assert_eq!(board.roads[4], None);
     }
 
     #[test]
     fn test_place_road_during_placement_ok() {
         let mut board = init_board();
-        assert!(
+        assert_eq!(
+            board
+                .place_settlement(
+                    GameStatus::FirstPlacementSettlement,
+                    VertexId::new(6),
+                    PlayerId::new(1)
+                ), Ok(())
+        );
+
+        assert_eq!(
             board
                 .place_road(
                     GameStatus::FirstPlacementRoad,
-                    EdgeId::new(10),
+                    EdgeId::new(6),
                     PlayerId::new(1)
-                )
-                .is_ok()
+                ), Ok(())
         );
-        assert_eq!(board.roads[10].unwrap(), PlayerId::new(1));
+        assert_eq!(board.roads[6].unwrap(), PlayerId::new(1));
     }
 
     #[test]
