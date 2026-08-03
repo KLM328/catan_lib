@@ -17,25 +17,25 @@ impl Scenario {
         Scenario {
             topology: Topology::from_hexes(&hexes),
             terrain_bag: vec![
+                Terrain::Forest,
+                Terrain::Fields,
+                Terrain::Forest,
+                Terrain::Pasture,
+                Terrain::Pasture,
+                Terrain::Forest,
+                Terrain::Fields,
+                Terrain::Pasture,
+                Terrain::Hills,
+                Terrain::Pasture,
+                Terrain::Hills,
+                Terrain::Fields,
+                Terrain::Hills,
+                Terrain::Mountain,
+                Terrain::Fields,
+                Terrain::Mountain,
+                Terrain::Forest,
+                Terrain::Mountain,
                 Terrain::Desert,
-                Terrain::Pasture,
-                Terrain::Pasture,
-                Terrain::Pasture,
-                Terrain::Pasture,
-                Terrain::Fields,
-                Terrain::Fields,
-                Terrain::Fields,
-                Terrain::Fields,
-                Terrain::Hills,
-                Terrain::Hills,
-                Terrain::Hills,
-                Terrain::Mountain,
-                Terrain::Mountain,
-                Terrain::Mountain,
-                Terrain::Forest,
-                Terrain::Forest,
-                Terrain::Forest,
-                Terrain::Forest,
             ],
             token_sequence: vec![
                 5u8, 2u8, 6u8, 3u8, 8u8, 10u8, 9u8, 12u8, 11u8, 4u8, 8u8, 10u8, 9u8, 4u8, 5u8, 6u8,
@@ -66,7 +66,7 @@ impl Scenario {
         let mut tokens = self.token_sequence.iter().copied();
 
         for (i, &terrain) in shuffled.iter().enumerate() {
-            let token = if terrain == Terrain::Desert {
+                let token = if terrain == Terrain::Desert {
                 if robber.is_none() {
                     robber = Some(TileId::new(i));
                 }
