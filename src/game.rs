@@ -46,7 +46,9 @@ pub enum GameStatus {
     FirstPlacementRoad,
     SecondPlacementSettlement,
     SecondPlacementRoad,
-    Playing,
+    AwaitingRoll,
+    AwaitingDiscard,
+    PlayingAction,
     End,
 }
 
@@ -121,7 +123,7 @@ impl Game {
             }
             GameStatus::SecondPlacementRoad => {
                 if self.current_turn == 0 {
-                    self.status = GameStatus::Playing;
+                    self.status = GameStatus::AwaitingRoll;
                 } else {
                     self.current_turn -= 1;
                     self.status = GameStatus::SecondPlacementSettlement;
@@ -133,8 +135,9 @@ impl Game {
 
     pub fn next_player(&mut self) -> Result<(), GameError> {
         match self.status {
-            GameStatus::Playing => {
+            GameStatus::PlayingAction => {
                 self.current_turn = (self.current_turn + 1) % self.turn_order.len();
+                self.set_status(GameStatus::AwaitingRoll);
                 Ok(())
             }
             GameStatus::FirstPlacementSettlement
@@ -171,7 +174,7 @@ impl Game {
     }
 
     pub fn apply_roll(&mut self, roll: Roll) -> Result<RollOutcome, GameError> {
-        self.playable_status(vec![GameStatus::Playing])?;
+        self.playable_status(vec![GameStatus::AwaitingRoll])?;
         let outcome = match roll.value() {
             7 => {
                 self.set_status(GameStatus::RobberIsMoving);
@@ -193,7 +196,7 @@ impl Game {
                 self.players[gain.player.value()].receive(gain.resource, gain.amount)
             });
         }
-
+        self.set_status(GameStatus::PlayingAction);
         Ok(outcome)
     }
 
@@ -201,22 +204,26 @@ impl Game {
         self.playable_status(vec![
             GameStatus::FirstPlacementRoad,
             GameStatus::SecondPlacementRoad,
-            GameStatus::Playing,
+            GameStatus::PlayingAction,
         ])?;
 
         self.check_player(player_id)?;
-        let current_status = self.status;
 
-        self.board()?.can_place_road(self.status, edge, player_id)?;
+        match self.status {
+            GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad => {
+                self.board_mut()?.place_road(Board::can_place_road_during_placement, edge, player_id)?;
+                self.end_placement_turn();
+                Ok(())
 
-        if matches!(self.status, GameStatus::Playing) {
-            self.get_player_mut(player_id)?.pay(&Cost::ROAD)?;
+            },
+            GameStatus::PlayingAction => {
+                self.board()?.can_place_road_during_playing(edge, player_id)?;
+                self.get_player_mut(player_id)?.pay(&Cost::ROAD)?;
+                self.board_mut()?.place_road(Board::can_place_road_during_playing, edge, player_id)?;
+                Ok(())
+            },
+            _ => unreachable!()
         }
-
-        self.board_mut()?
-            .place_road(current_status, edge, player_id)?;
-        self.end_placement_turn();
-        Ok(())
     }
 
     pub fn build_settlement(
@@ -227,34 +234,37 @@ impl Game {
         self.playable_status(vec![
             GameStatus::FirstPlacementSettlement,
             GameStatus::SecondPlacementSettlement,
-            GameStatus::Playing,
+            GameStatus::PlayingAction,
         ])?;
 
         self.check_player(player_id)?;
 
-        let current_status = self.status;
-        self.board()?
-            .can_place_building(self.status, vertex, player_id)?;
+        match self.status {
+            GameStatus::FirstPlacementSettlement => {
+                self.board_mut()?.place_settlement(Board::can_place_settlement_during_placement, vertex, player_id)?;
+                self.set_status(GameStatus::FirstPlacementRoad);
+                Ok(())
 
-        if matches!(self.status, GameStatus::Playing) {
-            self.get_player_mut(player_id)?.pay(&Cost::SETTLEMENT)?;
-        }
-        self.board_mut()?
-            .place_settlement(current_status, vertex, player_id)?;
-
-        if matches!(self.status, GameStatus::SecondPlacementSettlement) {
-            for r in self.board()?.resources_around(vertex) {
-                self.get_player_mut(self.current_player())?.receive(r, 1);
             }
+
+            GameStatus::SecondPlacementSettlement => {
+                self.board_mut()?.place_settlement(Board::can_place_settlement_during_placement, vertex, player_id)?;
+                for r in self.board()?.resources_around(vertex) {
+                    self.get_player_mut(self.current_player())?.receive(r, 1);
+                }
+                self.set_status(GameStatus::SecondPlacementRoad);
+                Ok(())
+
+            }
+            GameStatus::PlayingAction => {
+                self.board()?.can_place_settlement_during_playing(vertex, player_id)?;
+                self.get_player_mut(player_id)?.pay(&Cost::SETTLEMENT)?;
+                self.board_mut()?.place_settlement(Board::can_place_settlement_during_playing, vertex, player_id);
+                Ok(())
+
+            }
+            _ => unreachable!()
         }
-
-        self.status = match self.status {
-            GameStatus::FirstPlacementSettlement => GameStatus::FirstPlacementRoad,
-            GameStatus::SecondPlacementSettlement => GameStatus::SecondPlacementRoad,
-            other => other,
-        };
-
-        Ok(())
     }
 
     fn check_player(&self, player_id: PlayerId) -> Result<(), GameError> {
@@ -276,7 +286,7 @@ impl Game {
         player_id: PlayerId,
         vertex: VertexId,
     ) -> Result<(), GameError> {
-        self.playable_status(vec![GameStatus::Playing])?;
+        self.playable_status(vec![GameStatus::PlayingAction])?;
         self.check_player(player_id)?;
 
         self.board_mut()?
@@ -604,11 +614,21 @@ mod tests {
             Ok(())
         );
 
-        assert_eq!(game.status(), GameStatus::Playing);
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
         assert_eq!(game.current_player(), PlayerId::new(1));
+        assert_eq!(game.build_road(PlayerId::new(2), EdgeId::new(8)), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(7)), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.next_player(), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(1)), Err(GameError::InvalidGameStatus));
 
 
         assert_eq!(game.apply_roll(Roll::new(4,5).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,0,1,0,0])]))));
+
+        assert_eq!(game.status(), GameStatus::PlayingAction);
+
+        assert_eq!(game.apply_roll(Roll::new(4,5).unwrap()), Err(GameError::InvalidGameStatus));
+
+        assert_eq!(game.current_player(), PlayerId::new(1));
         assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 1, 1, 0, 1]));
         assert_eq!(game.build_road(PlayerId::new(2), EdgeId::new(8)), Err(GameError::NotYourTurn));
         assert_eq!(game.build_road(game.current_player(), EdgeId::new(8)), Ok(()));
