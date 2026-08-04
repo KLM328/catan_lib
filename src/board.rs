@@ -58,8 +58,7 @@ pub enum InvalidAction {
     NotConnected,
     RoadMustStartFromNewSettlement,
     NotYourSettlement(VertexId),
-
-    InvalidGameStatus,
+    RobberMustMove,
 }
 
 impl fmt::Display for InvalidAction {
@@ -117,8 +116,8 @@ impl fmt::Display for InvalidAction {
                     vertex_id.value()
                 )
             }
-            InvalidAction::InvalidGameStatus => {
-                write!(f, "Statut du jeu incompatible avec cette action")
+            InvalidAction::RobberMustMove => {
+                write!(f, "Le voleur doit être déplacé")
             }
         }
     }
@@ -368,6 +367,8 @@ impl Board {
             Some(tile) => {
                 if matches!(tile, Tile::Desert) {
                     Err(InvalidAction::RobberNotOnDesert)
+                } else if self.robber == tile_id {
+                    Err(InvalidAction::RobberMustMove)
                 } else {
                     self.robber = tile_id;
                     Ok(())

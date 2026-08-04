@@ -1,7 +1,4 @@
-use crate::{
-    Board, Cost, EdgeId, InvalidAction, InvalidBoard, NotEnoughResources, Player, PlayerId,
-    Production, Roll, Scenario, Terrain, VertexId,
-};
+use crate::{Board, Cost, EdgeId, InvalidAction, InvalidBoard, NotEnoughResources, Player, PlayerId, Production, ResourceCounts, Roll, Scenario, Terrain, TileId, VertexId};
 
 #[derive(Debug, PartialEq)]
 pub enum GameError {
@@ -18,6 +15,8 @@ pub enum GameError {
     PlayerNotFound(PlayerId),
     TurnDrivenByPlacement,
     InvalidGameStatus,
+    PlayerDontNeedToDiscard,
+    InvalidDiscardCount,
 }
 
 impl From<InvalidAction> for GameError {
@@ -38,9 +37,8 @@ impl From<InvalidBoard> for GameError {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum GameStatus {
-    RobberIsMoving,
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub(crate) enum StatusKind {
     Starting,
     FirstPlacementSettlement,
     FirstPlacementRoad,
@@ -48,8 +46,40 @@ pub enum GameStatus {
     SecondPlacementRoad,
     AwaitingRoll,
     AwaitingDiscard,
-    PlayingAction,
+    AwaitingNewRobberLocation,
+    PlayingActions,
+    End
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum GameStatus {
+    Starting,
+    FirstPlacementSettlement,
+    FirstPlacementRoad,
+    SecondPlacementSettlement,
+    SecondPlacementRoad,
+    AwaitingRoll,
+    AwaitingDiscard {must_discard : [u8; 6]},
+    AwaitingNewRobberLocation,
+    PlayingActions,
     End,
+}
+
+impl GameStatus {
+    pub(crate) fn kind(&self) -> StatusKind{
+        match self {
+            GameStatus::Starting => {StatusKind::Starting}
+            GameStatus::FirstPlacementSettlement => {StatusKind::FirstPlacementSettlement}
+            GameStatus::FirstPlacementRoad => {StatusKind::FirstPlacementRoad}
+            GameStatus::SecondPlacementSettlement => {StatusKind::SecondPlacementSettlement}
+            GameStatus::SecondPlacementRoad => {StatusKind::SecondPlacementRoad}
+            GameStatus::AwaitingRoll => {StatusKind::AwaitingRoll}
+            GameStatus::AwaitingDiscard { .. } => {StatusKind::AwaitingDiscard}
+            GameStatus::AwaitingNewRobberLocation => {StatusKind::AwaitingNewRobberLocation}
+            GameStatus::PlayingActions => {StatusKind::PlayingActions}
+            GameStatus::End => {StatusKind::End}
+        }
+    }
 }
 
 pub struct Game {
@@ -64,7 +94,7 @@ pub struct Game {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RollOutcome {
     Production(Production),
-    RobberActivated { must_discard: Vec<PlayerId> },
+    RobberActivated {must_discard : [u8; 6]},
 }
 
 impl Game {
@@ -93,7 +123,7 @@ impl Game {
         self.board.as_mut().ok_or(GameError::GameIsStarting)
     }
     pub fn start(&mut self, shuffled: &[Terrain]) -> Result<(), GameError> {
-        self.playable_status(vec![GameStatus::Starting])?;
+        self.check_status(&[StatusKind::Starting])?;
         self.board = Some(self.scenario.layout(shuffled)?);
         self.set_status(GameStatus::FirstPlacementSettlement);
         Ok(())
@@ -135,7 +165,7 @@ impl Game {
 
     pub fn next_player(&mut self) -> Result<(), GameError> {
         match self.status {
-            GameStatus::PlayingAction => {
+            GameStatus::PlayingActions => {
                 self.current_turn = (self.current_turn + 1) % self.turn_order.len();
                 self.set_status(GameStatus::AwaitingRoll);
                 Ok(())
@@ -149,7 +179,7 @@ impl Game {
     }
 
     pub fn set_players_order(&mut self, rolls: Vec<Roll>) -> Result<(), GameError> {
-        self.playable_status(vec![GameStatus::Starting])?;
+        self.check_status(&[StatusKind::Starting])?;
         if rolls.len() == self.players.len() {
             let best = rolls.iter().map(|r| r.value()).max().unwrap();
             if rolls.iter().filter(|r| r.value() == best).count() > 1 {
@@ -165,8 +195,8 @@ impl Game {
         }
     }
 
-    fn playable_status(&self, authorized_status: Vec<GameStatus>) -> Result<(), GameError> {
-        if authorized_status.contains(&self.status) {
+    fn check_status(&self, authorized_status: &[StatusKind]) -> Result<(), GameError> {
+        if authorized_status.contains(&self.status.kind()) {
             Ok(())
         } else {
             Err(GameError::InvalidGameStatus)
@@ -174,21 +204,25 @@ impl Game {
     }
 
     pub fn apply_roll(&mut self, roll: Roll) -> Result<RollOutcome, GameError> {
-        self.playable_status(vec![GameStatus::AwaitingRoll])?;
+        self.check_status(&[StatusKind::AwaitingRoll])?;
         let outcome = match roll.value() {
             7 => {
-                self.set_status(GameStatus::RobberIsMoving);
+                let mut must_discard = [0; 6];
+                self.players.iter().enumerate().filter(|(_, p)| p.hand().count() > 7).for_each(|(i, p)| must_discard[i] = p.hand().count()/2);
+
+                match must_discard {
+                    [0,0,0,0,0,0] =>self.set_status(GameStatus::AwaitingNewRobberLocation),
+                    _ => self.set_status(GameStatus::AwaitingDiscard { must_discard })
+                }
+
                 RollOutcome::RobberActivated {
-                    must_discard: self
-                        .players
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, p)| p.hand().count() > 7)
-                        .map(|(i, _)| PlayerId::new(i))
-                        .collect::<Vec<PlayerId>>(),
+                    must_discard,
                 }
             }
-            _ => RollOutcome::Production(self.board()?.production(roll)),
+            _ => {
+                self.set_status(GameStatus::PlayingActions);
+                RollOutcome::Production(self.board()?.production(roll))
+            },
         };
 
         if let RollOutcome::Production(production) = &outcome {
@@ -196,15 +230,14 @@ impl Game {
                 self.players[gain.player.value()].receive(gain.resource, gain.amount)
             });
         }
-        self.set_status(GameStatus::PlayingAction);
         Ok(outcome)
     }
 
     pub fn build_road(&mut self, player_id: PlayerId, edge: EdgeId) -> Result<(), GameError> {
-        self.playable_status(vec![
-            GameStatus::FirstPlacementRoad,
-            GameStatus::SecondPlacementRoad,
-            GameStatus::PlayingAction,
+        self.check_status(&[
+            StatusKind::FirstPlacementRoad,
+            StatusKind::SecondPlacementRoad,
+            StatusKind::PlayingActions,
         ])?;
 
         self.check_player(player_id)?;
@@ -216,7 +249,7 @@ impl Game {
                 Ok(())
 
             },
-            GameStatus::PlayingAction => {
+            GameStatus::PlayingActions => {
                 self.board()?.can_place_road_during_playing(edge, player_id)?;
                 self.get_player_mut(player_id)?.pay(&Cost::ROAD)?;
                 self.board_mut()?.place_road(Board::can_place_road_during_playing, edge, player_id)?;
@@ -231,10 +264,10 @@ impl Game {
         player_id: PlayerId,
         vertex: VertexId,
     ) -> Result<(), GameError> {
-        self.playable_status(vec![
-            GameStatus::FirstPlacementSettlement,
-            GameStatus::SecondPlacementSettlement,
-            GameStatus::PlayingAction,
+        self.check_status(&[
+            StatusKind::FirstPlacementSettlement,
+            StatusKind::SecondPlacementSettlement,
+            StatusKind::PlayingActions,
         ])?;
 
         self.check_player(player_id)?;
@@ -256,7 +289,7 @@ impl Game {
                 Ok(())
 
             }
-            GameStatus::PlayingAction => {
+            GameStatus::PlayingActions => {
                 self.board()?.can_place_settlement_during_playing(vertex, player_id)?;
                 self.get_player_mut(player_id)?.pay(&Cost::SETTLEMENT)?;
                 self.board_mut()?.place_settlement(Board::can_place_settlement_during_playing, vertex, player_id);
@@ -274,6 +307,15 @@ impl Game {
             Err(GameError::NotYourTurn)
         }
     }
+
+    fn is_player(&self, player_id: PlayerId) -> Result<(), GameError> {
+        if player_id.value() < self.players.len() {
+            Ok(())
+        } else {
+            Err(GameError::PlayerNotFound(player_id))
+        }
+    }
+
     fn get_player_mut(&mut self, player_id: PlayerId) -> Result<&mut Player, GameError> {
         let Some(player) = self.players.get_mut(player_id.value()) else {
             return Err(GameError::PlayerNotFound(player_id));
@@ -286,7 +328,7 @@ impl Game {
         player_id: PlayerId,
         vertex: VertexId,
     ) -> Result<(), GameError> {
-        self.playable_status(vec![GameStatus::PlayingAction])?;
+        self.check_status(&[StatusKind::PlayingActions])?;
         self.check_player(player_id)?;
 
         self.board_mut()?
@@ -298,13 +340,49 @@ impl Game {
             .upgrade_settlement_to_city(vertex, player_id)?;
         Ok(())
     }
+
+    pub fn move_robber(&mut self, player_id: PlayerId, tile: TileId) -> Result<(), GameError> {
+        self.check_status(&[StatusKind::AwaitingNewRobberLocation])?;
+        self.check_player(player_id)?;
+        self.board_mut()?.move_robber(tile)?;
+        self.set_status(GameStatus::PlayingActions);
+        Ok(())
+    }
+
+    pub fn discard(&mut self, player_id : PlayerId, resources : ResourceCounts) -> Result<(), GameError> {
+        self.check_status(&[StatusKind::AwaitingDiscard])?;
+        self.is_player(player_id)?;
+        if let GameStatus::AwaitingDiscard {mut must_discard } = self.status() {
+            if must_discard[player_id.value()] > 0 {
+                if must_discard[player_id.value()] == resources.count(){
+                    self.get_player_mut(player_id)?.pay(&Cost::new(resources))?;
+                    must_discard[player_id.value()] = 0;
+                } else {
+                    return Err(GameError::InvalidDiscardCount)
+                }
+
+
+
+                match must_discard {
+                    [0,0,0,0,0,0] => self.set_status(GameStatus::AwaitingNewRobberLocation),
+                    _ => self.set_status(GameStatus::AwaitingDiscard {must_discard})
+
+                }
+                Ok(())
+            } else {
+                Err(GameError::PlayerDontNeedToDiscard)
+            }
+        } else {
+            Err(GameError::InvalidGameStatus)
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::player::PlayerColor;
-    use crate::{NumberToken, ResourceCounts, Tile};
+    use crate::{Building, NumberToken, ResourceCounts, Tile};
 
     #[test]
     fn partie_complete() {
@@ -624,7 +702,7 @@ mod tests {
 
         assert_eq!(game.apply_roll(Roll::new(4,5).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,0,1,0,0])]))));
 
-        assert_eq!(game.status(), GameStatus::PlayingAction);
+        assert_eq!(game.status(), GameStatus::PlayingActions);
 
         assert_eq!(game.apply_roll(Roll::new(4,5).unwrap()), Err(GameError::InvalidGameStatus));
 
@@ -680,13 +758,96 @@ mod tests {
         assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 0, 1, 0, 1]));
 
         assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
         assert_eq!(game.current_player(), PlayerId::new(2));
 
+        assert_eq!(game.apply_roll(Roll::new(3,4).unwrap()), Ok(RollOutcome::RobberActivated {must_discard : [0; 6]}));
+        assert_eq!(game.status(), GameStatus::AwaitingNewRobberLocation);
+        assert_eq!(game.next_player(), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(20)), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(20)), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.build_road(game.current_player(), EdgeId::new(20)), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.apply_roll(Roll::new(3,4).unwrap()), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.move_robber(game.current_player(), TileId::new(18)), Err(GameError::Placement(InvalidAction::RobberNotOnDesert)));
+
+        assert_eq!(game.move_robber(game.current_player(), TileId::new(4)), Ok(()));
+        assert_eq!(game.status(), GameStatus::PlayingActions);
+        assert_eq!(game.current_player(), PlayerId::new(2));
+
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 1, 3, 0]));
+        assert_eq!(game.build_road(game.current_player(), EdgeId::new(18)), Ok(()));
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 2, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 0, 1, 0, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 0]));
 
 
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(0));
+        assert_eq!(game.apply_roll(Roll::new(3,6).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,0,2,0,0])]))));
+        assert_eq!(game.status(), GameStatus::PlayingActions);
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 2, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 0, 3, 0, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 0]));
 
-        //println!("{:?}", game.board().unwrap().buildings().iter().enumerate().filter(|(_, o)| o.is_some()).collect::<Vec<(usize, &Option<Building>)>>());
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(1));
+        assert_eq!(game.apply_roll(Roll::new(3,2).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(0), [0,0,0,1,0]), (PlayerId::new(1), [2,0,0,0,0])]))));
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 3, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([3, 0, 3, 0, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 0]));
 
-        // 7. vérifier NotYourTurn pour un joueur hors tour
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(2));
+        assert_eq!(game.apply_roll(Roll::new(3,2).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(0), [0,0,0,1,0]), (PlayerId::new(1), [2,0,0,0,0])]))));
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 4, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([5, 0, 3, 0, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 0]));
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(0));
+        assert_eq!(game.apply_roll(Roll::new(1,6).unwrap()), Ok(RollOutcome::RobberActivated {must_discard : [4, 4, 0, 0, 0, 0]}));
+        assert_eq!(game.status(), GameStatus::AwaitingDiscard {must_discard : [4, 4, 0, 0, 0, 0]});
+        assert_eq!(game.discard(PlayerId::new(8), ResourceCounts::new([0,0,0,0,0])), Err(GameError::PlayerNotFound(PlayerId::new(8))));
+        assert_eq!(game.discard(PlayerId::new(4), ResourceCounts::new([0,0,0,0,0])), Err(GameError::PlayerNotFound(PlayerId::new(4))));
+        assert_eq!(game.discard(PlayerId::new(2), ResourceCounts::new([0,0,0,0,0])), Err(GameError::PlayerDontNeedToDiscard));
+        assert_eq!(game.status(), GameStatus::AwaitingDiscard {must_discard : [4, 4, 0, 0, 0, 0]});
+        assert_eq!(game.next_player(), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(20)), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(20)), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.build_road(game.current_player(), EdgeId::new(20)), Err(GameError::InvalidGameStatus));
+        assert_eq!(game.apply_roll(Roll::new(3,4).unwrap()), Err(GameError::InvalidGameStatus));
+
+        assert_eq!(game.discard(PlayerId::new(0), ResourceCounts::new([7,0,0,0,0])), Err(GameError::InvalidDiscardCount));
+        assert_eq!(game.discard(PlayerId::new(0), ResourceCounts::new([1,0,0,0,0])), Err(GameError::InvalidDiscardCount));
+        assert_eq!(game.discard(PlayerId::new(0), ResourceCounts::new([4,0,0,0,0])), Err(GameError::NotEnoughResources));
+
+        assert_eq!(game.discard(PlayerId::new(0), ResourceCounts::new([2,0,0,2,0])), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingDiscard {must_discard : [0, 4, 0, 0, 0, 0]});
+        assert_eq!(game.discard(PlayerId::new(0), ResourceCounts::new([0,0,0,0,0])), Err(GameError::PlayerDontNeedToDiscard));
+        assert_eq!(game.discard(PlayerId::new(1), ResourceCounts::new([4,0,0,0,0])), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingNewRobberLocation);
+
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([1, 0, 0, 2, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 0, 3, 0, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 0]));
+
+        assert_eq!(game.move_robber(game.current_player(), game.board().unwrap().robber()), Err(GameError::Placement(InvalidAction::RobberMustMove)));
+        assert_eq!(game.move_robber(game.current_player(), TileId::new(12)), Ok(()));
+
+        assert_eq!(game.status(), GameStatus::PlayingActions);
+
+
+    }
+
+    fn print_builds(game: &Game){
+        println!("Road");
+        println!("{:?}", game.board().unwrap().roads().iter().enumerate().filter(|(_, o)| o.is_some()).collect::<Vec<(usize, &Option<PlayerId>)>>());
+        println!("Buildings");
+        println!("{:?}", game.board().unwrap().buildings().iter().enumerate().filter(|(_, o)| o.is_some()).collect::<Vec<(usize, &Option<Building>)>>());
+
     }
 }
