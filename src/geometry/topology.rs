@@ -43,9 +43,7 @@ impl Topology {
         self.edges_endpoints.iter().filter(|[a, b]| *a == vertex_id || *b == vertex_id ).map(|[a, b]| if *a == vertex_id { *b } else { *a }).collect::<Vec<VertexId>>()
     }
 
-    pub(crate) fn connected_edges(&self, vertex_id : VertexId) -> Vec<EdgeId> {
-        self.edges_endpoints.iter().enumerate().filter(|(_, [a, b])| *a == vertex_id || *b == vertex_id ).map(|(index, _)| EdgeId::new(index)).collect::<Vec<EdgeId>>()
-    }
+
 
     pub(crate) fn from_hexes(hexes : &[Hex]) -> Topology{
         let mut topology = Topology::new();
@@ -232,11 +230,5 @@ mod tests {
         assert_eq!(neighbors, vec![VertexId::new(1), VertexId::new(5), VertexId::new(7)]);
     }
 
-    #[test]
-    fn test_connected_edges() {
-        let topo = Topology::from_hexes(&Topology::spiral(2));
-        let mut edges = topo.connected_edges(VertexId::new(0));
-        edges.sort();
-        assert_eq!(edges, vec![EdgeId::new(0), EdgeId::new(1), EdgeId::new(8)]);
-    }
+
 }

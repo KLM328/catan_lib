@@ -1,4 +1,4 @@
-use crate::{EdgeId, PlayerId, Resource};
+use crate::{ConnectedEdges, EdgeId, PlayerId, Resource};
 use crate::{Roll, TileId, Topology, VertexId};
 use std::fmt;
 
@@ -215,7 +215,7 @@ impl Board {
             Err(InvalidAction::VertexOccupied(vertex))
         } else {
             let mut vertices = self.topology.vertex_neighbors(vertex);
-            let connected_edges = self.topology.connected_edges(vertex);
+            let connected_edges = vertex.connected_edges(self.topology());
             vertices.push(vertex);
             if !vertices.iter().all(|v| self.buildings[v.value()].is_none()) {
                 Err(InvalidAction::TooCloseToBuilding(
@@ -246,7 +246,6 @@ impl Board {
             Err(InvalidAction::VertexOccupied(vertex))
         } else {
             let mut vertices = self.topology.vertex_neighbors(vertex);
-            let connected_edges = self.topology.connected_edges(vertex);
             vertices.push(vertex);
             if !vertices.iter().all(|v| self.buildings[v.value()].is_none()) {
                 Err(InvalidAction::TooCloseToBuilding(
@@ -271,10 +270,6 @@ impl Board {
                 Err(InvalidAction::EdgeOccupied(edge))
             } else {
                 let endpoints = self.topology.edges_endpoints()[edge.value()];
-                let mut connected_edges = Vec::new();
-                endpoints
-                    .iter()
-                    .for_each(|&v| connected_edges.extend(self.topology().connected_edges(v)));
 
                 let player_buildings = endpoints
                     .iter()
@@ -291,8 +286,7 @@ impl Board {
                 if player_buildings.is_empty() {
                     Err(InvalidAction::RoadMustStartFromNewSettlement)
                 } else if player_buildings.iter().any(|&v| {
-                    self.topology
-                        .connected_edges(v)
+                    v.connected_edges(self.topology())
                         .iter()
                         .all(|&e| self.roads[e.value()] != Some(player))
                 }) {
@@ -315,24 +309,25 @@ impl Board {
             if target_edge.is_some() {
                 Err(InvalidAction::EdgeOccupied(edge))
             } else {
-                let endpoints = self.topology.edges_endpoints()[edge.value()];
-                let mut connected_edges = Vec::new();
-                endpoints
-                    .iter()
-                    .for_each(|&v| connected_edges.extend(self.topology().connected_edges(v)));
-
-                if connected_edges
-                    .iter()
-                    .any(|&e| self.roads[e.value()] == Some(player))
-                {
-                    Ok(())
-                } else {
-                    Err(InvalidAction::NotConnected)
-                }
+                self.is_connected_to_road(player, edge)?;
+                Ok(())
             }
         } else {
             Err(InvalidAction::UnexistingEdge(edge))
         }
+    }
+
+    fn is_connected_to_road(&self, player_id: PlayerId, object : impl ConnectedEdges) -> Result<(), InvalidAction> {
+
+        if object.connected_edges(self.topology())
+            .iter()
+            .any(|&e| self.roads[e.value()] == Some(player_id))
+        {
+            Ok(())
+        } else {
+            Err(InvalidAction::NotConnected)
+        }
+
     }
 
     pub(crate) fn place_road(

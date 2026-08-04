@@ -6,7 +6,7 @@ pub use topology::Topology;
 
 pub use hex::{Hex, HexCorner};
 
-pub use ids::{EdgeId, VertexId, TileId};
+pub use ids::{EdgeId, VertexId, TileId, ConnectedEdges};
 
 use std::fmt;
 
