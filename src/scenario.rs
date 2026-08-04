@@ -5,6 +5,7 @@ pub struct Scenario {
     topology: Topology,
     terrain_bag: Vec<Terrain>,
     token_sequence: Vec<NumberToken>,
+    max_points : u8,
 }
 
 impl Scenario {
@@ -44,6 +45,7 @@ impl Scenario {
             .iter()
             .map(|&i| NumberToken::new(i).unwrap())
             .collect(),
+            max_points : 10,
         }
     }
 
@@ -88,10 +90,14 @@ impl Scenario {
         }
         occ_terrains
     }
+    
+    pub(crate) fn max_points(&self) -> u8 {
+        self.max_points
+    }
 
     #[cfg(test)]
     pub(crate) fn test_scenario() -> Scenario {
-        Scenario {topology : Topology::test_topology(), terrain_bag : vec![Terrain::Forest, Terrain::Hills, Terrain::Desert], token_sequence : vec![NumberToken::new(6).unwrap(), NumberToken::new(8).unwrap()]}
+        Scenario {topology : Topology::test_topology(), terrain_bag : vec![Terrain::Forest, Terrain::Hills, Terrain::Desert], token_sequence : vec![NumberToken::new(6).unwrap(), NumberToken::new(8).unwrap()], max_points : 10}
     }
 }
 

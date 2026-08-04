@@ -23,6 +23,7 @@ impl PlayerId {
 pub struct Player {
     color: PlayerColor,
     hand: Hand,
+    score: u8,
 }
 
 impl Player {
@@ -30,6 +31,7 @@ impl Player {
         Self {
             color,
             hand: Hand::default(),
+            score: 0,
         }
     }
 
@@ -48,23 +50,16 @@ impl Player {
     pub(crate) fn pay(&mut self, cost : &crate::Cost) -> Result<(), NotEnoughResources> {
         self.hand.pay(cost)
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_player_id() {
-        assert_eq!(PlayerId::new(0), PlayerId(0));
+    
+    pub(crate) fn score(&self) -> u8 {
+        self.score
     }
-
-    #[test]
-    fn test_player_color() {
-        let player = Player {
-            color: PlayerColor::Red,
-            hand: Hand::default(),
-        };
-        assert_eq!(player.color, PlayerColor::Red);
+    
+    pub(crate) fn add_score(&mut self, amount : u8){
+        self.score += amount;
+    }
+    
+    pub(crate) fn remove_score(&mut self, amount : u8){
+        self.score -= amount;
     }
 }

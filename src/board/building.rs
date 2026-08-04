@@ -20,6 +20,10 @@ impl BuildingKind {
     pub(crate) fn amount(&self) -> u8 {
         match self { BuildingKind::Settlement => 1, BuildingKind::City => 2 }
     }
+
+    pub(crate) fn points(&self) -> u8 {
+        match self { BuildingKind::Settlement => 1, BuildingKind::City => 2}
+    }
 }
 
 #[cfg(test)]

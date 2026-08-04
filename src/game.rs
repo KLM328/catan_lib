@@ -1,4 +1,5 @@
-use crate::{Board, Cost, EdgeId, InvalidAction, InvalidBoard, NotEnoughResources, Player, PlayerId, Production, ResourceCounts, Roll, Scenario, Terrain, TileId, VertexId};
+use crate::{player, Board, Cost, EdgeId, InvalidAction, InvalidBoard, NotEnoughResources, Player, PlayerId, Production, ResourceCounts, Roll, Scenario, Terrain, TileId, VertexId};
+use crate::board::BuildingKind;
 
 #[derive(Debug, PartialEq)]
 pub enum GameError {
@@ -62,7 +63,7 @@ pub enum GameStatus {
     AwaitingDiscard {must_discard : [u8; 6]},
     AwaitingNewRobberLocation,
     PlayingActions,
-    End,
+    End{winner : PlayerId},
 }
 
 impl GameStatus {
@@ -77,7 +78,7 @@ impl GameStatus {
             GameStatus::AwaitingDiscard { .. } => {StatusKind::AwaitingDiscard}
             GameStatus::AwaitingNewRobberLocation => {StatusKind::AwaitingNewRobberLocation}
             GameStatus::PlayingActions => {StatusKind::PlayingActions}
-            GameStatus::End => {StatusKind::End}
+            GameStatus::End { .. } => {StatusKind::End}
         }
     }
 }
@@ -275,6 +276,7 @@ impl Game {
         match self.status {
             GameStatus::FirstPlacementSettlement => {
                 self.board_mut()?.place_settlement(Board::can_place_settlement_during_placement, vertex, player_id)?;
+                self.edit_score(Player::add_score, player_id, BuildingKind::Settlement.points())?;
                 self.set_status(GameStatus::FirstPlacementRoad);
                 Ok(())
 
@@ -282,6 +284,7 @@ impl Game {
 
             GameStatus::SecondPlacementSettlement => {
                 self.board_mut()?.place_settlement(Board::can_place_settlement_during_placement, vertex, player_id)?;
+                self.edit_score(Player::add_score, player_id, BuildingKind::Settlement.points())?;
                 for r in self.board()?.resources_around(vertex) {
                     self.get_player_mut(self.current_player())?.receive(r, 1);
                 }
@@ -292,7 +295,8 @@ impl Game {
             GameStatus::PlayingActions => {
                 self.board()?.can_place_settlement_during_playing(vertex, player_id)?;
                 self.get_player_mut(player_id)?.pay(&Cost::SETTLEMENT)?;
-                self.board_mut()?.place_settlement(Board::can_place_settlement_during_playing, vertex, player_id);
+                self.board_mut()?.place_settlement(Board::can_place_settlement_during_playing, vertex, player_id)?;
+                self.edit_score(Player::add_score, player_id, BuildingKind::Settlement.points())?;
                 Ok(())
 
             }
@@ -338,6 +342,9 @@ impl Game {
 
         self.board_mut()?
             .upgrade_settlement_to_city(vertex, player_id)?;
+        self.edit_score(Player::remove_score, player_id, BuildingKind::Settlement.points())?;
+        self.edit_score(Player::add_score, player_id, BuildingKind::City.points())?;
+
         Ok(())
     }
 
@@ -375,6 +382,23 @@ impl Game {
         } else {
             Err(GameError::InvalidGameStatus)
         }
+    }
+
+    fn edit_score(&mut self, fun : impl Fn(&mut Player, u8) -> () ,player_id: PlayerId, amount : u8) -> Result<(), GameError> {
+        self.check_status(&[StatusKind::PlayingActions, StatusKind::FirstPlacementSettlement, StatusKind::SecondPlacementSettlement])?;
+        self.check_player(player_id)?;
+        fun(self.get_player_mut(player_id)?, amount);
+        self.check_victory()?;
+        Ok(())
+    }
+
+    fn check_victory(&mut self) -> Result<(), GameError> {
+        let winner = self.players.iter().position(|p| p.score() >= self.scenario.max_points());
+        if winner.is_some(){
+            let winner = PlayerId::new(winner.unwrap());
+            self.set_status(GameStatus::End{winner});
+        }
+        Ok(())
     }
 }
 
@@ -507,6 +531,8 @@ mod tests {
         );
         assert_eq!(game.start(&game.scenario.terrains().to_vec()), Ok(()));
 
+        assert_eq!(game.players[1].score(), 0);
+
         assert_eq!(game.status(), GameStatus::FirstPlacementSettlement);
         assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
         assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Err(GameError::InvalidGameStatus));
@@ -531,6 +557,8 @@ mod tests {
             game.build_settlement(game.current_player(), VertexId::new(1)),
             Ok(())
         );
+        assert_eq!(game.players[1].score(), 1);
+
         assert_eq!(game.current_player(), PlayerId::new(1));
         assert_eq!(game.status(), GameStatus::FirstPlacementRoad);
         assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
@@ -678,6 +706,7 @@ mod tests {
             game.build_settlement(game.current_player(), VertexId::new(33)),
             Ok(())
         );
+        assert_eq!(game.players[1].score(), 2);
         assert_eq!(
             game.players[game.current_player().value()]
                 .hand()
@@ -755,6 +784,7 @@ mod tests {
         assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(20)), Err(GameError::Placement(InvalidAction::NotYourSettlement(VertexId::new(20)))));
         assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(2)), Err(GameError::Placement(InvalidAction::UnexistingBuilding(VertexId::new(2)))));
         assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(1)), Ok(()));
+        assert_eq!(game.players[1].score(), 3);
         assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 0, 1, 0, 1]));
 
         assert_eq!(game.next_player(), Ok(()));
