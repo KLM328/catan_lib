@@ -64,7 +64,7 @@ pub enum Tile {
 
 
 impl Tile {
-    pub(crate) fn terrain(self) -> Terrain{
+    pub fn terrain(self) -> Terrain{
         match self {
             Tile::Desert => Terrain::Desert,
             Tile::Forest(_) => Terrain::Forest,
@@ -78,7 +78,7 @@ impl Tile {
         self.terrain().resource()
     }
 
-    pub(crate) fn number(self) -> Option<NumberToken> {
+    pub fn number(self) -> Option<NumberToken> {
         match self {
             Tile::Forest(n) => Some(n),
             Tile::Mountain(n) => Some(n),

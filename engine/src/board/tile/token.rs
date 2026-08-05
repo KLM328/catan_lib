@@ -23,7 +23,7 @@ impl NumberToken {
         }
     }
 
-    pub(crate) fn value(self) -> u8 {
+    pub fn value(self) -> u8 {
         self.0
     }
 }

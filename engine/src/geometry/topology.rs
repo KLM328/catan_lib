@@ -12,6 +12,7 @@ pub struct Topology{
     tile_vertices: Vec<[VertexId; 6]>,
     tile_edges: Vec<[EdgeId; 6]>,
     edges_endpoints: Vec<[VertexId; 2]>,
+    vertex_hexes : Vec<[Hex; 3]>,
     vertex_count: usize,
     edge_count: usize,
 }
@@ -19,7 +20,7 @@ pub struct Topology{
 impl Topology {
 
     fn new() -> Topology{
-        Topology{hexes: Vec::new(), tile_vertices: Vec::new(), tile_edges: Vec::new(), edges_endpoints : Vec::new(), vertex_count: 0, edge_count: 0}
+        Topology{hexes: Vec::new(), tile_vertices: Vec::new(), tile_edges: Vec::new(), edges_endpoints : Vec::new(), vertex_hexes : Vec::new(), vertex_count: 0, edge_count: 0}
     }
 
     pub fn hexes(&self) -> &[Hex] {
@@ -42,6 +43,10 @@ impl Topology {
         &self.edges_endpoints
     }
 
+    pub(crate) fn vertex_hexes(&self) -> &[[Hex; 3]] {
+        &self.vertex_hexes
+    }
+
     pub(crate) fn vertex_neighbors(&self, vertex_id : VertexId) -> Vec<VertexId> {
         self.edges_endpoints.iter().filter(|[a, b]| *a == vertex_id || *b == vertex_id ).map(|[a, b]| if *a == vertex_id { *b } else { *a }).collect::<Vec<VertexId>>()
     }
@@ -54,18 +59,22 @@ impl Topology {
         let mut vertices: HashMap<[Hex; 3], VertexId> = HashMap::new();
         let mut edges: HashMap<[Hex; 2], EdgeId> = HashMap::new();
         let mut edges_endpoints : Vec<[VertexId; 2]> = Vec::new();
+        let mut vertex_hexes : Vec<[Hex; 3]> = Vec::new();
 
         for hex in hexes {
             let mut new_tile_for_vertices: [VertexId; 6] = [VertexId::new(0); 6];
             let mut new_tile_for_edges : [EdgeId; 6] = [EdgeId::new(0); 6];
 
-
-
-
             for corner in HexCorner::ALL {
                 let new_index_vertices = vertices.len();
+                let key = hex.corner_hexes(corner);
+                let vertex_id = *vertices.entry(key).or_insert(VertexId::new(new_index_vertices));
+                new_tile_for_vertices[corner.value()] = vertex_id;
 
-                new_tile_for_vertices[corner.value()] = *vertices.entry(hex.corner_hexes(corner)).or_insert(VertexId::new(new_index_vertices));
+                if vertex_id.value() == vertex_hexes.len(){
+                    vertex_hexes.push(key)
+                }
+
             }
             for dir in HexDirection::ALL {
                 let new_index_edges = edges.len();
@@ -84,6 +93,7 @@ impl Topology {
         topology.vertex_count = vertices.len();
         topology.edge_count = edges.len();
         topology.edges_endpoints = edges_endpoints;
+        topology.vertex_hexes = vertex_hexes;
         topology
 
     }

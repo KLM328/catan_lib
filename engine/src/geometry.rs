@@ -1,12 +1,15 @@
 mod topology;
 mod hex;
 mod ids;
+mod layout;
 
 pub use topology::Topology;
 
 pub use hex::{Hex, HexCorner};
 
 pub use ids::{EdgeId, VertexId, TileId, ConnectedEdges};
+
+pub use layout::Layout;
 
 use std::fmt;
 

@@ -47,6 +47,13 @@ impl Hex {
         Hex{q, r}
     }
 
+    pub(crate) fn q(self) -> i8 {
+        self.q
+    }
+    pub(crate) fn r(self) -> i8 {
+        self.r
+    }
+
     pub(crate) fn neighbor(self, dir : HexDirection) -> Hex{
         Hex::new(self.q + DIRS[dir.0].0, self.r + DIRS[dir.0].1)
     }
@@ -62,6 +69,8 @@ impl Hex {
         hexes.sort();
         hexes
     }
+
+
 }
 
 #[cfg(test)]

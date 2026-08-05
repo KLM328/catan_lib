@@ -127,7 +127,7 @@ impl Game {
         }
     }
 
-    fn board(&self) -> Result<&Board, GameError> {
+    pub fn board(&self) -> Result<&Board, GameError> {
         self.board.as_ref().ok_or(GameError::GameIsStarting)
     }
     fn board_mut(&mut self) -> Result<&mut Board, GameError> {
