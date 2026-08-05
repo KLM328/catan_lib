@@ -10,7 +10,7 @@ pub use resource::{Resource, Cost, ResourceCounts, Hand, ResourceError, Steal};
 pub use board::{Tile, Gain, Production, Building, NumberToken, Terrain};
 pub use roll::Roll;
 pub use board::{Board, InvalidBoard, InvalidAction};
-pub use player::{Player, PlayerId};
+pub use player::{Player, PlayerId, PlayerColor};
 pub use game::{Game, GameStatus, GameError};
 pub use geometry::{Hex, HexCorner, Topology, VertexId, EdgeId, TileId, ConnectedEdges};
 pub use scenario::Scenario;
