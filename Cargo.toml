@@ -1,0 +1,12 @@
+[workspace]
+resolver = "3"
+members = ["engine", "client"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Quentin"]
+
+[workspace.dependencies]
+rand = "0.10.2"
+catan = { path = "engine" }
