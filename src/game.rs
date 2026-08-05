@@ -422,10 +422,12 @@ impl Game {
                     return Err(GameError::InvalidDiscardCount);
                 }
 
-                match must_discard {
-                    [0, 0, 0, 0, 0, 0] => self.set_status(GameStatus::AwaitingNewRobberLocation),
-                    _ => self.set_status(GameStatus::AwaitingDiscard { must_discard }),
+                if must_discard.iter().all(|&n| n == 0) {
+                    self.set_status(GameStatus::AwaitingNewRobberLocation);
+                } else {
+                    self.set_status(GameStatus::AwaitingDiscard { must_discard });
                 }
+
                 Ok(())
             } else {
                 Err(GameError::PlayerDontNeedToDiscard)
