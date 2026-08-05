@@ -177,14 +177,12 @@ impl eframe::App for CatanApp {
                     match self.game.status() {
                         GameStatus::Starting => {}
                         GameStatus::FirstPlacementSettlement | GameStatus::SecondPlacementSettlement => {
-                            let test = layout.pick_vertex(topo, (pos.x, pos.y), radius);
-                            if let Some(vertex_location) = test {
+                            if let Some(vertex_location) = layout.pick_vertex(topo, (pos.x, pos.y), radius) {
                                 let _ = self.game
                                     .build_settlement(
                                         self.game.current_player(),
                                         vertex_location,
                                     );
-                                println!("{:?}", test);
                             }
 
                         }
@@ -195,7 +193,6 @@ impl eframe::App for CatanApp {
                                         self.game.current_player(),
                                         edge_location,
                                     );
-                                println!("{:?}", test);
                             }
                         GameStatus::AwaitingRoll => {}
                         GameStatus::AwaitingDiscard { .. } => {}
