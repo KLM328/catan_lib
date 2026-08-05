@@ -1,7 +1,7 @@
 use crate::board::BuildingKind;
 use crate::{
     Board, Building, Cost, EdgeId, InvalidAction, InvalidBoard, Player, PlayerId, Production,
-    ResourceCounts, ResourceError, Roll, Scenario, Steal, Terrain, TileId, VertexId, player,
+    ResourceCounts, ResourceError, Roll, Scenario, Steal, Terrain, TileId, VertexId
 };
 
 #[derive(Debug, PartialEq)]
@@ -458,8 +458,10 @@ impl Game {
             .iter()
             .position(|p| p.score() >= self.scenario.max_points());
 
-        if let Some(winner_index) = winner{
-            self.set_status(GameStatus::End { winner : PlayerId::new(winner_index) });
+        if let Some(winner_index) = winner {
+            self.set_status(GameStatus::End {
+                winner: PlayerId::new(winner_index),
+            });
         }
 
         Ok(())
@@ -477,11 +479,19 @@ impl Game {
         .flatten()
         .collect();
 
-        println!("{:?}", buildings);
+        let victims: Vec<PlayerId> = buildings
+            .iter()
+            .map(|b| b.owner())
+            .filter(|victims_id: &PlayerId| victims_id.value() != player_id.value())
+            .filter(|&p| !self.get_player_mut(p).unwrap().hand().is_empty())
+            .collect();
+
+        println!("{:?}", victims);
+
 
         match steal {
             None => {
-                if buildings.is_empty() {
+                if victims.is_empty() {
                     self.set_status(GameStatus::PlayingActions);
                     Ok(())
                 } else {
@@ -489,14 +499,13 @@ impl Game {
                 }
             }
             Some(steal) => {
-                if let Some(resource) = steal.resource() {
-                    if buildings.is_empty() {
+                    if victims.is_empty() {
                         Err(GameError::NoOneToSteal)
-                    } else if buildings.iter().any(|o| o.owner() == steal.victim()) {
+                    } else if victims.contains(&steal.victim()) {
                         let resource: ResourceCounts = self
                             .get_player_mut(steal.victim())?
                             .hand()
-                            .get_resource(resource)?;
+                            .get_resource(steal.resource())?;
                         self.get_player_mut(steal.victim())?
                             .pay(&Cost::new(resource))?;
                         self.get_player_mut(player_id)?.receive(resource);
@@ -505,14 +514,6 @@ impl Game {
                     } else {
                         Err(GameError::UnauthorizedVictim)
                     }
-                } else {
-                    if self.get_player_mut(steal.victim())?.hand().is_empty() {
-                        self.set_status(GameStatus::PlayingActions);
-                        Ok(())
-                    } else {
-                        Err(GameError::MustStealSomeone)
-                    }
-                }
             }
         }
     }
@@ -523,7 +524,6 @@ mod tests {
     use super::*;
     use crate::player::PlayerColor;
     use crate::{Building, NumberToken, ResourceCounts, Tile};
-
 
     #[test]
     fn init_game() {
@@ -536,7 +536,7 @@ mod tests {
                 Player::new(PlayerColor::Blue),
             ],
         )
-            .unwrap();
+        .unwrap();
 
         assert_eq!(
             game.set_players_order(vec![Roll::new(2, 4).unwrap()]),
@@ -629,8 +629,6 @@ mod tests {
             ]
         );
     }
-
-
 
     #[test]
     fn partie_complete() {
@@ -1112,7 +1110,10 @@ mod tests {
         );
 
         assert_eq!(
-            game.steal(game.current_player(), Some(Steal::new(PlayerId::new(1), Some(0)))),
+            game.steal(
+                game.current_player(),
+                Some(Steal::new(PlayerId::new(1), 0))
+            ),
             Err(GameError::UnauthorizedVictim)
         );
 
@@ -1134,11 +1135,13 @@ mod tests {
             ResourceCounts::new([2, 0, 1, 3, 0])
         );
 
-        assert_eq!(game.steal(game.current_player(), Some(Steal::new(PlayerId::new(0), None))), Err(GameError::MustStealSomeone));
 
 
         assert_eq!(
-            game.steal(game.current_player(), Some(Steal::new(PlayerId::new(0), Some(0)))),
+            game.steal(
+                game.current_player(),
+                Some(Steal::new(PlayerId::new(0), 0))
+            ),
             Ok(())
         );
 
@@ -1410,9 +1413,18 @@ mod tests {
             ])))
         );
 
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([2, 0, 3, 2, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 0, 4, 0]));
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([1, 0, 0, 3, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([2, 0, 3, 2, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 4, 0])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.status(), GameStatus::AwaitingRoll);
@@ -1423,38 +1435,72 @@ mod tests {
             Ok(RollOutcome::Production(Production::new(&[
                 (PlayerId::new(1), [1, 0, 0, 0, 0]),
                 (PlayerId::new(2), [0, 0, 0, 0, 1]),
-
             ])))
         );
 
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([3, 0, 3, 2, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 0, 4, 1]));
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([1, 0, 0, 3, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([3, 0, 3, 2, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 4, 1])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
 
         assert_eq!(
             game.apply_roll(Roll::new(6, 6).unwrap()),
-            Ok(RollOutcome::Production(Production::new(&[
-                (PlayerId::new(1), [0, 0, 0, 0, 1]),
-            ])))
+            Ok(RollOutcome::Production(Production::new(&[(
+                PlayerId::new(1),
+                [0, 0, 0, 0, 1]
+            ),])))
         );
 
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([3, 0, 3, 2, 2]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 0, 4, 1]));
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([1, 0, 0, 3, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([3, 0, 3, 2, 2])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 4, 1])
+        );
 
-        print_builds(&game);
-        assert_eq!(game.build_road(game.current_player(), EdgeId::new(68)), Ok(()));
-        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(7)), Ok(()));
-        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(51)), Ok(()));
+        assert_eq!(
+            game.build_road(game.current_player(), EdgeId::new(68)),
+            Ok(())
+        );
+        assert_eq!(
+            game.build_settlement(game.current_player(), VertexId::new(7)),
+            Ok(())
+        );
+        assert_eq!(
+            game.build_settlement(game.current_player(), VertexId::new(51)),
+            Ok(())
+        );
 
         assert_eq!(game.players[1].score(), 5);
 
-
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 0, 0, 0, 0]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 0, 4, 1]));
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([1, 0, 0, 3, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([0, 0, 0, 0, 0])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 4, 1])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.status(), GameStatus::AwaitingRoll);
@@ -1466,21 +1512,33 @@ mod tests {
                 must_discard: [0, 0, 0, 0, 0, 0]
             })
         );
+        assert_eq!(game.status(), GameStatus::AwaitingNewRobberLocation);
         assert_eq!(
-            game.status(),
-            GameStatus::AwaitingNewRobberLocation
+            game.move_robber(game.current_player(), TileId::new(0)),
+            Ok(())
         );
-        assert_eq!(game.move_robber(game.current_player(), TileId::new(0)), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingSteal);
         assert_eq!(
-            game.status(),
-            GameStatus::AwaitingSteal
+            game.steal(
+                game.current_player(),
+                Some(Steal::new(PlayerId::new(1), 1))
+            ),
+            Err(GameError::NoOneToSteal)
         );
-        assert_eq!(game.steal(game.current_player(), Some(Steal::new(PlayerId::new(1), Some(1)))), Err(GameError::Resource(ResourceError::IsEmpty)));
-        assert_eq!(game.steal(game.current_player(), Some(Steal::new(PlayerId::new(1), None))), Ok(()));
+
         assert_eq!(
-            game.status(),
-            GameStatus::PlayingActions
+            game.players[1].hand().resources(),
+            ResourceCounts::new([0, 0, 0, 0, 0])
         );
+
+        assert_eq!(
+            game.steal(
+                game.current_player(),
+                None
+            ),
+            Ok(())
+        );
+        assert_eq!(game.status(), GameStatus::PlayingActions);
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.status(), GameStatus::AwaitingRoll);
@@ -1544,12 +1602,16 @@ mod tests {
             ])))
         );
 
-        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(33)), Ok(()));
-        assert_eq!(game.status(), GameStatus::End{winner : PlayerId::new(1)});
-
-
-
-
+        assert_eq!(
+            game.upgrade_settlement_to_city(game.current_player(), VertexId::new(33)),
+            Ok(())
+        );
+        assert_eq!(
+            game.status(),
+            GameStatus::End {
+                winner: PlayerId::new(1)
+            }
+        );
     }
 
     fn print_builds(game: &Game) {
