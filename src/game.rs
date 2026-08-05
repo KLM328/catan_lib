@@ -471,10 +471,12 @@ impl Game {
         self.check_status(&[StatusKind::AwaitingSteal])?;
         self.check_player(player_id)?;
 
+        let board = self.board()?;
+
         let buildings: Vec<Building> = self.board()?.topology().tile_vertices()
             [self.board()?.robber().value()]
         .iter()
-        .map(|&v| self.board().unwrap().buildings()[v.value()])
+        .map(|&v| board.buildings()[v.value()])
         .filter(|&o| o.is_some())
         .flatten()
         .collect();
