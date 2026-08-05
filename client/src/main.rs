@@ -1,5 +1,8 @@
-use catan::{Game, Layout, Player, PlayerColor, Roll, Scenario, Terrain, TileId};
-use eframe::egui::{self, Color32, FontId, Pos2, Sense, Shape, Stroke, Align2};
+use catan::{
+    BuildingKind, EdgeId, Game, GameStatus, Layout, Player, PlayerColor, Roll, Scenario, Terrain,
+    TileId, VertexId, GameError
+};
+use eframe::egui::{self, Align2, Color32, FontId, Pos2, Sense, Shape, Stroke};
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions::default();
@@ -28,13 +31,16 @@ impl CatanApp {
                 Player::new(PlayerColor::White),
             ],
         )
-            .expect("création de la partie");
+        .expect("création de la partie");
 
-        game.set_players_order(vec![Roll::random(), Roll::random(), Roll::random()])
-            .expect("ordre des joueurs");
+        while let Err(GameError::TiedRolls) = game.set_players_order(vec![Roll::random(), Roll::random(), Roll::random()]){}
+
         game.start(&terrains).expect("mise en place du plateau");
 
-        Self { game, hex_size: 80.0 }
+        Self {
+            game,
+            hex_size: 80.0,
+        }
     }
 }
 
@@ -57,6 +63,11 @@ impl eframe::App for CatanApp {
                 hex_size: self.hex_size,
                 origin: (center.x, center.y),
             };
+
+            let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+            if scroll != 0.0 {
+                self.hex_size = (self.hex_size * (1.0 + scroll * 0.002)).clamp(20.0, 200.0);
+            }
 
             let board = self.game.board().expect("plateau initialisé");
             let topo = board.topology();
@@ -84,7 +95,11 @@ impl eframe::App for CatanApp {
                 if let Some(token) = tile.number() {
                     let (cx, cy) = layout.tile_position(topo, tile_id);
                     let pos = Pos2::new(cx, cy);
-                    painter.circle_filled(pos, self.hex_size*0.35, Color32::from_rgb(240, 235, 220));
+                    painter.circle_filled(
+                        pos,
+                        self.hex_size * 0.35,
+                        Color32::from_rgb(240, 235, 220),
+                    );
 
                     // 6 et 8 sont les numéros "rouges" : les plus probables.
                     let color = match token.value() {
@@ -97,14 +112,14 @@ impl eframe::App for CatanApp {
                         5 | 9 => 0.36,
                         4 | 10 => 0.32,
                         3 | 11 => 0.28,
-                         _ => 0.24,
+                        _ => 0.24,
                     };
 
                     painter.text(
                         pos,
                         Align2::CENTER_CENTER,
                         token.value().to_string(),
-                        FontId::proportional(self.hex_size*size),
+                        FontId::proportional(self.hex_size * size),
                         color,
                     );
                 }
@@ -113,10 +128,82 @@ impl eframe::App for CatanApp {
                 if board.robber() == tile_id {
                     let (cx, cy) = layout.tile_position(topo, tile_id);
                     painter.circle_filled(
-                        Pos2::new(cx, cy - self.hex_size*0.50),
-                        self.hex_size*0.30,
+                        Pos2::new(cx, cy - self.hex_size * 0.50),
+                        self.hex_size * 0.30,
                         Color32::from_rgb(20, 20, 20),
                     );
+                }
+            }
+
+            // Les routes d'abord (elles passent sous les bâtiments)
+            for (index, owner) in board.roads().iter().enumerate() {
+                if let Some(player) = owner {
+                    let ((ax, ay), (bx, by)) = layout.edge_position(topo, EdgeId::new(index));
+                    painter.line_segment(
+                        [Pos2::new(ax, ay), Pos2::new(bx, by)],
+                        Stroke::new(
+                            self.hex_size * 0.15,
+                            player_color(self.game.get_player(*player).unwrap()),
+                        ),
+                    );
+                }
+            }
+
+            // Puis les colonies et les villes
+            for (index, building) in board.buildings().iter().enumerate() {
+                if let Some(b) = building {
+                    let (x, y) = layout.vertex_position(topo, VertexId::new(index));
+                    let pos = Pos2::new(x, y);
+                    let color = player_color(self.game.get_player(b.owner()).unwrap());
+                    match b.kind() {
+                        BuildingKind::Settlement => {
+                            painter.circle_filled(pos, self.hex_size * 0.3, color)
+                        }
+                        BuildingKind::City => painter.rect_filled(
+                            egui::Rect::from_center_size(
+                                pos,
+                                egui::vec2(self.hex_size * 0.3, self.hex_size * 0.3),
+                            ),
+                            2.0,
+                            color,
+                        ),
+                    };
+                }
+            }
+
+            if response.clicked() {
+                if let Some(pos) = response.interact_pointer_pos() {
+                    let radius = self.hex_size * 0.30;
+                    match self.game.status() {
+                        GameStatus::Starting => {}
+                        GameStatus::FirstPlacementSettlement | GameStatus::SecondPlacementSettlement => {
+                            let test = layout.pick_vertex(topo, (pos.x, pos.y), radius);
+                            if let Some(vertex_location) = test {
+                                let _ = self.game
+                                    .build_settlement(
+                                        self.game.current_player(),
+                                        vertex_location,
+                                    );
+                                println!("{:?}", test);
+                            }
+
+                        }
+                        GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad =>
+                            if let Some(edge_location) = layout.pick_edge(topo, (pos.x, pos.y), radius) {
+                                let test = self.game
+                                    .build_road(
+                                        self.game.current_player(),
+                                        edge_location,
+                                    );
+                                println!("{:?}", test);
+                            }
+                        GameStatus::AwaitingRoll => {}
+                        GameStatus::AwaitingDiscard { .. } => {}
+                        GameStatus::AwaitingSteal => {}
+                        GameStatus::AwaitingNewRobberLocation => {}
+                        GameStatus::PlayingActions => {}
+                        GameStatus::End { .. } => {}
+                    }
                 }
             }
         });
@@ -131,5 +218,14 @@ fn terrain_color(terrain: Terrain) -> Color32 {
         Terrain::Hills => Color32::from_rgb(181, 90, 48),
         Terrain::Pasture => Color32::from_rgb(143, 193, 93),
         Terrain::Fields => Color32::from_rgb(232, 193, 74),
+    }
+}
+
+fn player_color(player: &Player) -> Color32 {
+    match player.color() {
+        PlayerColor::Blue => Color32::from_rgb(0, 0, 250),
+        PlayerColor::Red => Color32::from_rgb(185, 5, 20),
+        PlayerColor::White => Color32::from_rgb(255, 255, 210),
+        PlayerColor::Orange => Color32::from_rgb(255, 110, 0),
     }
 }

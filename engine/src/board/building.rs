@@ -8,9 +8,9 @@ impl Building {
         Self { kind, owner }
     }
     
-    pub(crate) fn kind(&self) -> BuildingKind { self.kind }
+    pub fn kind(&self) -> BuildingKind { self.kind }
 
-    pub(crate) fn owner(&self) -> PlayerId { self.owner } 
+    pub fn owner(&self) -> PlayerId { self.owner }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 

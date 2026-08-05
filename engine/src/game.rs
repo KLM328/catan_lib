@@ -126,6 +126,8 @@ impl Game {
             })
         }
     }
+    
+    
 
     pub fn board(&self) -> Result<&Board, GameError> {
         self.board.as_ref().ok_or(GameError::GameIsStarting)
@@ -368,6 +370,13 @@ impl Game {
 
     fn get_player_mut(&mut self, player_id: PlayerId) -> Result<&mut Player, GameError> {
         let Some(player) = self.players.get_mut(player_id.value()) else {
+            return Err(GameError::PlayerNotFound(player_id));
+        };
+        Ok(player)
+    }
+
+    pub fn get_player(&self, player_id: PlayerId) -> Result<&Player, GameError> {
+        let Some(player) = self.players.get(player_id.value()) else {
             return Err(GameError::PlayerNotFound(player_id));
         };
         Ok(player)
