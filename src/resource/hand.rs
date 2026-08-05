@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::{Cost, Resource};
+use crate::{Cost};
 use crate::resource::counts::ResourceCounts;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,7 +59,6 @@ impl Hand {
 
 #[cfg(test)]
 mod tests {
-    use crate::Resource;
     use super::*;
 
     #[test]

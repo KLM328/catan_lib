@@ -1,5 +1,4 @@
 use crate::player::PlayerId;
-use crate::resource::Resource;
 use crate::ResourceCounts;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

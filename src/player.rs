@@ -1,4 +1,4 @@
-use crate::{Hand, ResourceError, Resource, ResourceCounts};
+use crate::{Hand, ResourceError, ResourceCounts};
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum PlayerColor {
@@ -44,7 +44,7 @@ impl Player {
     }
 
     pub(crate) fn receive(&mut self, resources : ResourceCounts) {
-        
+
         self.hand.add(resources);
     }
 
