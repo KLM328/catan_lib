@@ -13,6 +13,7 @@ pub enum GameError {
     WrongRollCount,
     TiedRolls,
     NotEnoughPlayers,
+    TooManyPlayers,
     PlayerNotFound(PlayerId),
     TurnDrivenByPlacement,
     InvalidGameStatus,
@@ -102,6 +103,8 @@ impl Game {
     pub fn new(scenario: Scenario, players: Vec<Player>) -> Result<Game, GameError> {
         if players.is_empty() {
             Err(GameError::NotEnoughPlayers)
+        } else if players.len() > 6 {
+            Err(GameError::TooManyPlayers)
         } else {
             Ok(Game {
                 scenario,
@@ -798,7 +801,7 @@ mod tests {
         assert_eq!(game.build_settlement(game.current_player(), VertexId::new(20)), Err(GameError::InvalidGameStatus));
         assert_eq!(game.build_road(game.current_player(), EdgeId::new(20)), Err(GameError::InvalidGameStatus));
         assert_eq!(game.apply_roll(Roll::new(3,4).unwrap()), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.move_robber(game.current_player(), TileId::new(18)), Err(GameError::Placement(InvalidAction::RobberNotOnDesert)));
+        assert_eq!(game.move_robber(game.current_player(), TileId::new(18)), Err(GameError::Placement(InvalidAction::RobberMustMove)));
 
         assert_eq!(game.move_robber(game.current_player(), TileId::new(4)), Ok(()));
         assert_eq!(game.status(), GameStatus::PlayingActions);

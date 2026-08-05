@@ -359,10 +359,8 @@ impl Board {
     pub(crate) fn move_robber(&mut self, tile_id: TileId) -> Result<(), InvalidAction> {
         let option_tile = self.tiles.get(tile_id.value());
         match option_tile {
-            Some(tile) => {
-                if matches!(tile, Tile::Desert) {
-                    Err(InvalidAction::RobberNotOnDesert)
-                } else if self.robber == tile_id {
+            Some(_) => {
+                if self.robber == tile_id {
                     Err(InvalidAction::RobberMustMove)
                 } else {
                     self.robber = tile_id;
