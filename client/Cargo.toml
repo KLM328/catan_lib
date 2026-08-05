@@ -5,4 +5,4 @@ edition.workspace = true
 
 [dependencies]
 catan.workspace = true
-eframe = "0.29"
+eframe = "0.35.0"
