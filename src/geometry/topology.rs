@@ -1,7 +1,10 @@
 use std::cmp::PartialEq;
 use std::collections::HashMap;
 use crate::geometry::{Hex, HexCorner, HexDirection};
-use crate::{EdgeId, TileId, VertexId};
+use crate::{EdgeId, VertexId};
+
+#[cfg(test)]
+use crate::TileId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Topology{
@@ -19,14 +22,14 @@ impl Topology {
         Topology{hexes: Vec::new(), tile_vertices: Vec::new(), tile_edges: Vec::new(), edges_endpoints : Vec::new(), vertex_count: 0, edge_count: 0}
     }
 
-    pub(crate) fn hexes(&self) -> &[Hex] {
+    pub fn hexes(&self) -> &[Hex] {
         &self.hexes
     }
 
-    pub(crate) fn tile_vertices(&self) -> &[[VertexId; 6]] {
+    pub fn tile_vertices(&self) -> &[[VertexId; 6]] {
         &self.tile_vertices
     }
-    pub(crate) fn tile_edges(&self) -> &[[EdgeId; 6]] {
+    pub fn tile_edges(&self) -> &[[EdgeId; 6]] {
         &self.tile_edges
     }
     pub(crate) fn vertex_count(&self) -> usize {
@@ -100,6 +103,7 @@ impl Topology {
         hexes
     }
 
+    #[cfg(test)]
     pub(crate) fn adjacent_tile_pairs(&self) -> Vec<(TileId, TileId)> {
         let mut owners: Vec<Vec<TileId>> = vec![Vec::new(); self.edge_count];
 

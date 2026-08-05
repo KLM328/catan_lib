@@ -4,7 +4,7 @@ use crate::Topology;
 pub struct TileId(usize);
 
 impl TileId {
-    pub(crate) fn new(index: usize) -> TileId {
+    pub fn new(index: usize) -> TileId {
         TileId(index)
     }
     pub(crate) fn value(&self) -> usize {
@@ -15,7 +15,7 @@ impl TileId {
 pub struct VertexId(usize);
 
 impl VertexId {
-    pub(crate) fn new(index: usize) -> VertexId {
+    pub fn new(index: usize) -> VertexId {
         VertexId(index)
     }
 
@@ -28,13 +28,13 @@ impl VertexId {
 pub struct EdgeId(usize);
 
 impl EdgeId {
-    pub(crate) fn value(&self) -> usize {
+    pub fn value(&self) -> usize {
         self.0
     }
 }
 
 impl EdgeId {
-    pub(crate) fn new(index: usize) -> EdgeId {
+    pub fn new(index: usize) -> EdgeId {
         EdgeId(index)
     }
 }

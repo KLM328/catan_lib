@@ -156,23 +156,23 @@ impl Board {
         }
     }
 
-    pub(crate) fn robber(&self) -> TileId {
+    pub fn robber(&self) -> TileId {
         self.robber
     }
 
-    pub(crate) fn tiles(&self) -> &[Tile] {
+    pub fn tiles(&self) -> &[Tile] {
         &self.tiles
     }
 
-    pub(crate) fn topology(&self) -> &Topology {
+    pub fn topology(&self) -> &Topology {
         &self.topology
     }
 
-    pub(crate) fn buildings(&self) -> &[Option<Building>] {
+    pub fn buildings(&self) -> &[Option<Building>] {
         &self.buildings
     }
 
-    pub(crate) fn roads(&self) -> &[Option<PlayerId>] {
+    pub fn roads(&self) -> &[Option<PlayerId>] {
         &self.roads
     }
 

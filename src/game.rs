@@ -1615,6 +1615,7 @@ mod tests {
         );
     }
 
+    #[allow(unused)]
     fn print_builds(game: &Game) {
         println!("Road");
         println!(

@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::{Cost};
+use crate::{Cost, Resource};
 use crate::resource::counts::ResourceCounts;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,12 +29,16 @@ impl Hand {
         Ok(())
     }
 
-    pub(crate) fn resources(&self) -> ResourceCounts {
+    pub fn resources(&self) -> ResourceCounts {
         self.0
     }
 
-    pub(crate) fn count(&self) -> u8 {
+    pub fn count(&self) -> u8 {
         self.0.count()
+    }
+
+    pub fn amount(&self, resource: Resource) -> u8 {
+        self.0.amount(resource)
     }
 
     pub(crate) fn add(&mut self, resources : ResourceCounts){

@@ -13,6 +13,7 @@ pub struct Production {
 }
 
 impl Production {
+    #[cfg(test)]
     pub(crate) fn new(entries: &[(PlayerId, [u8; 5])]) -> Self {
         let mut production = Self::default();
         for &(player, counts) in entries {

@@ -1,14 +1,18 @@
+#[cfg(test)]
 use std::fmt;
 use crate::geometry::{HexDirection, DIRS};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InvalidHexCorner(pub usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(test)]
+pub struct InvalidHexCorner(pub usize);
+#[cfg(test)]
 impl fmt::Display for InvalidHexCorner {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} n'est pas un corner valide (0-5)", self.0)
     }
 }
+#[cfg(test)]
 impl std::error::Error for InvalidHexCorner {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +21,8 @@ pub struct HexCorner(usize);
 impl HexCorner {
     pub const ALL: [HexCorner; 6] = [HexCorner(0), HexCorner(1), HexCorner(2),
         HexCorner(3), HexCorner(4), HexCorner(5)];
+
+    #[cfg(test)]
     pub(crate) fn new(corner : usize) -> Result<HexCorner, InvalidHexCorner> {
         if matches!(corner, 0..=5) {
             Ok(HexCorner(corner))

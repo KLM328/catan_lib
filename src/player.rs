@@ -11,7 +11,7 @@ pub enum PlayerColor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayerId(usize);
 impl PlayerId {
-    pub(crate) fn new(id: usize) -> Self {
+    pub fn new(id: usize) -> Self {
         Self(id)
     }
 
