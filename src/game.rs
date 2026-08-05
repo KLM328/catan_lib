@@ -473,8 +473,8 @@ impl Game {
 
         let board = self.board()?;
 
-        let buildings: Vec<Building> = self.board()?.topology().tile_vertices()
-            [self.board()?.robber().value()]
+        let buildings: Vec<Building> = board.topology().tile_vertices()
+            [board.robber().value()]
         .iter()
         .map(|&v| board.buildings()[v.value()])
         .filter(|&o| o.is_some())
@@ -487,9 +487,6 @@ impl Game {
             .filter(|victims_id: &PlayerId| victims_id.value() != player_id.value())
             .filter(|&p| !self.get_player_mut(p).unwrap().hand().is_empty())
             .collect();
-
-        println!("{:?}", victims);
-
 
         match steal {
             None => {
