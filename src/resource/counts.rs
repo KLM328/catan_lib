@@ -36,7 +36,7 @@ impl ResourceCounts {
 
     pub(crate) fn get_resource(&self, index : u8) -> ResourceCounts {
         let mut index = index % self.count() + 1;
-        let r_index = self.0.iter().enumerate().map(|(i, &amount)| if index <= amount {true} else {index -= amount; false}).position(|v| v).unwrap();
+        let r_index = self.0.iter().map(|&amount| if index <= amount {true} else {index -= amount; false}).position(|v| v).unwrap();
         let mut result : [u8;5] = [0; 5];
         result[r_index] = 1;
         ResourceCounts::new(result)
