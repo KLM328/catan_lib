@@ -437,7 +437,7 @@ impl Game {
 
     fn edit_score(
         &mut self,
-        fun: impl Fn(&mut Player, u8) -> (),
+        fun: impl Fn(&mut Player, u8),
         player_id: PlayerId,
         amount: u8,
     ) -> Result<(), GameError> {
@@ -457,10 +457,11 @@ impl Game {
             .players
             .iter()
             .position(|p| p.score() >= self.scenario.max_points());
-        if winner.is_some() {
-            let winner = PlayerId::new(winner.unwrap());
-            self.set_status(GameStatus::End { winner });
+
+        if let Some(winner_index) = winner{
+            self.set_status(GameStatus::End { winner : PlayerId::new(winner_index) });
         }
+
         Ok(())
     }
 

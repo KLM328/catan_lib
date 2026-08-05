@@ -46,15 +46,15 @@ pub trait ConnectedEdges {
 impl ConnectedEdges for VertexId {
     fn connected_edges(self, topology: &Topology) -> Vec<EdgeId> {
         topology.edges_endpoints().iter().enumerate().filter(|(_, vertices)| vertices.contains(&self) ).map(|(index, _)| EdgeId::new(index)).collect::<Vec<EdgeId>>()
-    } 
+    }
 }
 
 impl ConnectedEdges for EdgeId {
     fn connected_edges(self, topology: &Topology) -> Vec<EdgeId> {
         let option_endpoint = topology.edges_endpoints().get(self.value());
         let mut connected_edges : Vec<EdgeId> = Vec::new();
-        if option_endpoint.is_some() {
-            option_endpoint.unwrap().iter().for_each(|&v| connected_edges.extend(v.connected_edges(topology)));
+        if let Some(option_endpoint) = option_endpoint {
+            option_endpoint.iter().for_each(|&v| connected_edges.extend(v.connected_edges(topology)));
         }
         connected_edges
     }
