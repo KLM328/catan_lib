@@ -1,4 +1,4 @@
-use crate::{ConnectedEdges, EdgeId, PlayerId, Resource};
+use crate::{ConnectedEdges, EdgeId, PlayerId, Resource, ResourceCounts};
 use crate::{Roll, TileId, Topology, VertexId};
 use std::fmt;
 
@@ -191,11 +191,13 @@ impl Board {
             };
 
             for vertex in &self.topology.tile_vertices()[index] {
+                let mut resources = [0;5];
+
                 if let Some(building) = self.buildings[vertex.value()] {
-                    production.add_gain(Gain {
+                    resources[resource.index()] += building.kind().amount();
+                        production.add_gain(Gain {
                         player: building.owner(),
-                        resource,
-                        amount: building.kind().amount(),
+                        resources : ResourceCounts::new(resources)
                     });
                 }
             }
@@ -422,7 +424,6 @@ pub mod tests {
     use crate::NumberToken;
     use crate::board::production::{Gain, Production};
     use crate::player::PlayerId;
-    use crate::resource::Resource;
 
     pub(crate) fn init_board_without_buildings() -> Board {
         let topology = Topology::test_topology();
@@ -484,8 +485,8 @@ pub mod tests {
         let mut expected_production = Production::default();
         expected_production.add_gain(Gain {
             player: PlayerId::new(1),
-            resource: Resource::Wood,
-            amount: 2,
+            resources: ResourceCounts::new([2,0,0,0,0]),
+
         });
         assert_eq!(
             board.production(Roll::new(2, 4).unwrap()),

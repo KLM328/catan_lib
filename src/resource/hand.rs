@@ -3,22 +3,28 @@ use crate::{Cost, Resource};
 use crate::resource::counts::ResourceCounts;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NotEnoughResources;
+pub enum ResourceError {
+    NotEnoughResources,
+    IsEmpty,
+}
 
-impl fmt::Display for NotEnoughResources {
+impl fmt::Display for ResourceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ressources insuffisantes")
+        match self {
+            ResourceError::NotEnoughResources => write!(f, "Not enough resources"),
+            ResourceError::IsEmpty => write!(f, "Resource is empty"),
+        }
     }
 }
-impl std::error::Error for NotEnoughResources {}
+impl std::error::Error for ResourceError {}
 
 #[derive(Default)]
 pub struct Hand(ResourceCounts);
 
 impl Hand {
-    pub(crate) fn pay(&mut self, cost: &Cost) -> Result<(), NotEnoughResources> {
+    pub(crate) fn pay(&mut self, cost: &Cost) -> Result<(), ResourceError> {
         if !self.0.try_subtract(&cost.resources()) {
-            return Err(NotEnoughResources);
+            return Err(ResourceError::NotEnoughResources);
         }
         Ok(())
     }
@@ -31,8 +37,21 @@ impl Hand {
         self.0.count()
     }
 
-    pub(crate) fn add(&mut self, resource : Resource, amount : u8){
-        self.0.add(resource, amount);
+    pub(crate) fn add(&mut self, resources : ResourceCounts){
+        self.0.add(resources);
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.count() == 0
+    }
+
+    pub(crate) fn get_resource(&self, index: u8) -> Result<ResourceCounts, ResourceError> {
+        if self.is_empty() {
+            Err(ResourceError::IsEmpty)
+        } else {
+            Ok(self.0.get_resource(index))
+        }
+
     }
 
 
@@ -46,15 +65,15 @@ mod tests {
     #[test]
     fn test_hand_pay_with_not_enough_resources() -> () {
         let mut hand = Hand::default();
-        assert_eq!(hand.pay(&Cost::ROAD), Err(NotEnoughResources));
+        assert_eq!(hand.pay(&Cost::ROAD), Err(ResourceError::NotEnoughResources));
         assert_eq!(hand.resources(), ResourceCounts::default());
     }
 
     #[test]
     fn test_hand_pay_with_enough_resources() -> () {
         let mut hand = Hand::default();
-        hand.add(Resource::Brick, 1);
-        hand.add(Resource::Wood, 1);
+        hand.add(ResourceCounts::new([1, 0, 0, 0, 0]));
+        hand.add(ResourceCounts::new([0, 0, 1, 0, 0]));
         assert_eq!(hand.pay(&Cost::ROAD), Ok(()));
         assert_eq!(hand.resources(), ResourceCounts::default());
     }
@@ -62,7 +81,19 @@ mod tests {
     #[test]
     fn test_hand_add() -> () {
         let mut hand = Hand::default();
-        hand.add(Resource::Brick, 1);
+        hand.add(ResourceCounts::new([0, 0, 1, 0, 0]));
         assert_eq!(hand.resources(), ResourceCounts::new([0, 0, 1, 0, 0]));
+    }
+
+    #[test]
+    fn test_get_resource() {
+        let hand = Hand(ResourceCounts::new([0,1,2,5,0]));
+        assert_eq!(hand.get_resource(0), Ok(ResourceCounts::new([0,1,0,0,0])));
+        assert_eq!(hand.get_resource(1), Ok(ResourceCounts::new([0,0,1,0,0])));
+        assert_eq!(hand.get_resource(2), Ok(ResourceCounts::new([0,0,1,0,0])));
+        assert_eq!(hand.get_resource(8), Ok(ResourceCounts::new([0,1,0,0,0])));
+
+        let hand = Hand(ResourceCounts::default());
+        assert_eq!(hand.get_resource(4), Err(ResourceError::IsEmpty));
     }
 }

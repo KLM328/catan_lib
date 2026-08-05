@@ -6,7 +6,7 @@ mod game;
 mod geometry;
 mod scenario;
 
-pub use resource::{Resource, Cost, ResourceCounts, Hand, NotEnoughResources};
+pub use resource::{Resource, Cost, ResourceCounts, Hand, ResourceError, Steal};
 pub use board::{Tile, Gain, Production, Building, NumberToken, Terrain};
 pub use roll::Roll;
 pub use board::{Board, InvalidBoard, InvalidAction};

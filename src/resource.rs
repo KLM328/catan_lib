@@ -1,10 +1,12 @@
 mod cost;
 mod hand;
 mod counts;
+mod steal;
 
 pub use cost::Cost;
-pub use hand::{Hand, NotEnoughResources};
+pub use hand::{Hand, ResourceError};
 pub use counts::ResourceCounts;
+pub use steal::Steal;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Resource {

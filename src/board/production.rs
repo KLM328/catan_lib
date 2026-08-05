@@ -1,13 +1,11 @@
-use std::collections::HashMap;
-use crate::board::production;
 use crate::player::PlayerId;
 use crate::resource::Resource;
+use crate::ResourceCounts;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Gain {
     pub player: PlayerId,
-    pub resource: Resource,
-    pub amount: u8,
+    pub resources: ResourceCounts
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -19,15 +17,7 @@ impl Production {
     pub(crate) fn new(entries: &[(PlayerId, [u8; 5])]) -> Self {
         let mut production = Self::default();
         for &(player, counts) in entries {
-            for (index, &amount) in counts.iter().enumerate() {
-                if amount > 0 {
-                    production.add_gain(Gain {
-                        player,
-                        resource: Resource::from_index(index).unwrap(),
-                        amount,
-                    });
-                }
-            }
+            production.add_gain(Gain { player, resources: ResourceCounts::new(counts)});
         }
         production.sort();
         production
@@ -35,9 +25,9 @@ impl Production {
 
     pub(crate) fn add_gain(&mut self, gain: Gain) {
         if let Some(existing) = self.gains.iter_mut()
-            .find(|g| g.player == gain.player && g.resource == gain.resource)
+            .find(|g| g.player == gain.player)
         {
-            existing.amount += gain.amount;
+            existing.resources.add(gain.resources);
         } else {
             self.gains.push(gain);
         }
@@ -46,7 +36,7 @@ impl Production {
     pub(crate) fn gains(&self) -> &[Gain] { &self.gains }
 
     pub fn sort(&mut self) {
-        self.gains.sort_by_key(|g| (g.player.value(), g.resource.index()));
+        self.gains.sort_by_key(|g| g.player.value());
     }
 }
 
@@ -57,7 +47,7 @@ mod tests {
     #[test]
     fn test_production_add_gain() {
         let mut production = Production::default();
-        production.add_gain(Gain { player: PlayerId::new(0), resource: Resource::Wood, amount: 2 });
+        production.add_gain(Gain { player: PlayerId::new(0), resources: ResourceCounts::new([2,0,0,0,0]) });
         assert_eq!(production.gains.len(), 1);
     }
 
@@ -69,7 +59,7 @@ mod tests {
     #[test]
     fn test_production_gains() {
         let mut production = Production::default();
-        production.add_gain(Gain { player: PlayerId::new(0), resource: Resource::Wood, amount: 2 });
-        assert_eq!(production.gains()[0], Gain { player: PlayerId::new(0), resource: Resource::Wood, amount: 2 });
+        production.add_gain(Gain { player: PlayerId::new(0), resources: ResourceCounts::new([2,0,0,0,0]) });
+        assert_eq!(production.gains()[0], Gain { player: PlayerId::new(0), resources: ResourceCounts::new([2,0,0,0,0]) });
     }
 }

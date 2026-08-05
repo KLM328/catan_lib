@@ -1,10 +1,14 @@
-use crate::{player, Board, Cost, EdgeId, InvalidAction, InvalidBoard, NotEnoughResources, Player, PlayerId, Production, ResourceCounts, Roll, Scenario, Terrain, TileId, VertexId};
 use crate::board::BuildingKind;
+use crate::{
+    Board, Building, Cost, EdgeId, InvalidAction, InvalidBoard, Player, PlayerId, Production,
+    ResourceCounts, ResourceError, Roll, Scenario, Steal, Terrain, TileId, VertexId, player,
+};
 
 #[derive(Debug, PartialEq)]
 pub enum GameError {
     BoardInitialization(InvalidBoard),
     Placement(InvalidAction),
+    Resource(ResourceError),
     NotEnoughResources,
     NotYourTurn,
     GameOver,
@@ -19,6 +23,9 @@ pub enum GameError {
     InvalidGameStatus,
     PlayerDontNeedToDiscard,
     InvalidDiscardCount,
+    UnauthorizedVictim,
+    MustStealSomeone,
+    NoOneToSteal,
 }
 
 impl From<InvalidAction> for GameError {
@@ -27,9 +34,9 @@ impl From<InvalidAction> for GameError {
     }
 }
 
-impl From<NotEnoughResources> for GameError {
-    fn from(_: NotEnoughResources) -> Self {
-        Self::NotEnoughResources
+impl From<ResourceError> for GameError {
+    fn from(e: ResourceError) -> Self {
+        Self::Resource(e)
     }
 }
 
@@ -48,9 +55,10 @@ pub(crate) enum StatusKind {
     SecondPlacementRoad,
     AwaitingRoll,
     AwaitingDiscard,
+    AwaitingSteal,
     AwaitingNewRobberLocation,
     PlayingActions,
-    End
+    End,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -61,25 +69,27 @@ pub enum GameStatus {
     SecondPlacementSettlement,
     SecondPlacementRoad,
     AwaitingRoll,
-    AwaitingDiscard {must_discard : [u8; 6]},
+    AwaitingDiscard { must_discard: [u8; 6] },
+    AwaitingSteal,
     AwaitingNewRobberLocation,
     PlayingActions,
-    End{winner : PlayerId},
+    End { winner: PlayerId },
 }
 
 impl GameStatus {
-    pub(crate) fn kind(&self) -> StatusKind{
+    pub(crate) fn kind(&self) -> StatusKind {
         match self {
-            GameStatus::Starting => {StatusKind::Starting}
-            GameStatus::FirstPlacementSettlement => {StatusKind::FirstPlacementSettlement}
-            GameStatus::FirstPlacementRoad => {StatusKind::FirstPlacementRoad}
-            GameStatus::SecondPlacementSettlement => {StatusKind::SecondPlacementSettlement}
-            GameStatus::SecondPlacementRoad => {StatusKind::SecondPlacementRoad}
-            GameStatus::AwaitingRoll => {StatusKind::AwaitingRoll}
-            GameStatus::AwaitingDiscard { .. } => {StatusKind::AwaitingDiscard}
-            GameStatus::AwaitingNewRobberLocation => {StatusKind::AwaitingNewRobberLocation}
-            GameStatus::PlayingActions => {StatusKind::PlayingActions}
-            GameStatus::End { .. } => {StatusKind::End}
+            GameStatus::Starting => StatusKind::Starting,
+            GameStatus::FirstPlacementSettlement => StatusKind::FirstPlacementSettlement,
+            GameStatus::FirstPlacementRoad => StatusKind::FirstPlacementRoad,
+            GameStatus::SecondPlacementSettlement => StatusKind::SecondPlacementSettlement,
+            GameStatus::SecondPlacementRoad => StatusKind::SecondPlacementRoad,
+            GameStatus::AwaitingRoll => StatusKind::AwaitingRoll,
+            GameStatus::AwaitingDiscard { .. } => StatusKind::AwaitingDiscard,
+            GameStatus::AwaitingSteal => StatusKind::AwaitingSteal,
+            GameStatus::AwaitingNewRobberLocation => StatusKind::AwaitingNewRobberLocation,
+            GameStatus::PlayingActions => StatusKind::PlayingActions,
+            GameStatus::End { .. } => StatusKind::End,
         }
     }
 }
@@ -96,7 +106,7 @@ pub struct Game {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RollOutcome {
     Production(Production),
-    RobberActivated {must_discard : [u8; 6]},
+    RobberActivated { must_discard: [u8; 6] },
 }
 
 impl Game {
@@ -109,10 +119,7 @@ impl Game {
             Ok(Game {
                 scenario,
                 status: GameStatus::Starting,
-                turn_order: (0..players.len())
-                    .into_iter()
-                    .map(PlayerId::new)
-                    .collect(),
+                turn_order: (0..players.len()).into_iter().map(PlayerId::new).collect(),
                 current_turn: 0,
                 players,
                 board: None,
@@ -212,27 +219,30 @@ impl Game {
         let outcome = match roll.value() {
             7 => {
                 let mut must_discard = [0; 6];
-                self.players.iter().enumerate().filter(|(_, p)| p.hand().count() > 7).for_each(|(i, p)| must_discard[i] = p.hand().count()/2);
+                self.players
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| p.hand().count() > 7)
+                    .for_each(|(i, p)| must_discard[i] = p.hand().count() / 2);
 
                 match must_discard {
-                    [0,0,0,0,0,0] =>self.set_status(GameStatus::AwaitingNewRobberLocation),
-                    _ => self.set_status(GameStatus::AwaitingDiscard { must_discard })
+                    [0, 0, 0, 0, 0, 0] => self.set_status(GameStatus::AwaitingNewRobberLocation),
+                    _ => self.set_status(GameStatus::AwaitingDiscard { must_discard }),
                 }
 
-                RollOutcome::RobberActivated {
-                    must_discard,
-                }
+                RollOutcome::RobberActivated { must_discard }
             }
             _ => {
                 self.set_status(GameStatus::PlayingActions);
                 RollOutcome::Production(self.board()?.production(roll))
-            },
+            }
         };
 
         if let RollOutcome::Production(production) = &outcome {
-            production.gains().iter().for_each(|gain| {
-                self.players[gain.player.value()].receive(gain.resource, gain.amount)
-            });
+            production
+                .gains()
+                .iter()
+                .for_each(|gain| self.players[gain.player.value()].receive(gain.resources));
         }
         Ok(outcome)
     }
@@ -248,18 +258,26 @@ impl Game {
 
         match self.status {
             GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad => {
-                self.board_mut()?.place_road(Board::can_place_road_during_placement, edge, player_id)?;
+                self.board_mut()?.place_road(
+                    Board::can_place_road_during_placement,
+                    edge,
+                    player_id,
+                )?;
                 self.end_placement_turn();
                 Ok(())
-
-            },
+            }
             GameStatus::PlayingActions => {
-                self.board()?.can_place_road_during_playing(edge, player_id)?;
+                self.board()?
+                    .can_place_road_during_playing(edge, player_id)?;
                 self.get_player_mut(player_id)?.pay(&Cost::ROAD)?;
-                self.board_mut()?.place_road(Board::can_place_road_during_playing, edge, player_id)?;
+                self.board_mut()?.place_road(
+                    Board::can_place_road_during_playing,
+                    edge,
+                    player_id,
+                )?;
                 Ok(())
-            },
-            _ => unreachable!()
+            }
+            _ => unreachable!(),
         }
     }
 
@@ -278,32 +296,57 @@ impl Game {
 
         match self.status {
             GameStatus::FirstPlacementSettlement => {
-                self.board_mut()?.place_settlement(Board::can_place_settlement_during_placement, vertex, player_id)?;
-                self.edit_score(Player::add_score, player_id, BuildingKind::Settlement.points())?;
+                self.board_mut()?.place_settlement(
+                    Board::can_place_settlement_during_placement,
+                    vertex,
+                    player_id,
+                )?;
+                self.edit_score(
+                    Player::add_score,
+                    player_id,
+                    BuildingKind::Settlement.points(),
+                )?;
                 self.set_status(GameStatus::FirstPlacementRoad);
                 Ok(())
-
             }
 
             GameStatus::SecondPlacementSettlement => {
-                self.board_mut()?.place_settlement(Board::can_place_settlement_during_placement, vertex, player_id)?;
-                self.edit_score(Player::add_score, player_id, BuildingKind::Settlement.points())?;
+                self.board_mut()?.place_settlement(
+                    Board::can_place_settlement_during_placement,
+                    vertex,
+                    player_id,
+                )?;
+                self.edit_score(
+                    Player::add_score,
+                    player_id,
+                    BuildingKind::Settlement.points(),
+                )?;
+                let mut resources = [0; 5];
                 for r in self.board()?.resources_around(vertex) {
-                    self.get_player_mut(self.current_player())?.receive(r, 1);
+                    resources[r.index()] += 1;
                 }
+                self.get_player_mut(self.current_player())?
+                    .receive(ResourceCounts::new(resources));
                 self.set_status(GameStatus::SecondPlacementRoad);
                 Ok(())
-
             }
             GameStatus::PlayingActions => {
-                self.board()?.can_place_settlement_during_playing(vertex, player_id)?;
+                self.board()?
+                    .can_place_settlement_during_playing(vertex, player_id)?;
                 self.get_player_mut(player_id)?.pay(&Cost::SETTLEMENT)?;
-                self.board_mut()?.place_settlement(Board::can_place_settlement_during_playing, vertex, player_id)?;
-                self.edit_score(Player::add_score, player_id, BuildingKind::Settlement.points())?;
+                self.board_mut()?.place_settlement(
+                    Board::can_place_settlement_during_playing,
+                    vertex,
+                    player_id,
+                )?;
+                self.edit_score(
+                    Player::add_score,
+                    player_id,
+                    BuildingKind::Settlement.points(),
+                )?;
                 Ok(())
-
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -345,7 +388,11 @@ impl Game {
 
         self.board_mut()?
             .upgrade_settlement_to_city(vertex, player_id)?;
-        self.edit_score(Player::remove_score, player_id, BuildingKind::Settlement.points())?;
+        self.edit_score(
+            Player::remove_score,
+            player_id,
+            BuildingKind::Settlement.points(),
+        )?;
         self.edit_score(Player::add_score, player_id, BuildingKind::City.points())?;
 
         Ok(())
@@ -355,28 +402,29 @@ impl Game {
         self.check_status(&[StatusKind::AwaitingNewRobberLocation])?;
         self.check_player(player_id)?;
         self.board_mut()?.move_robber(tile)?;
-        self.set_status(GameStatus::PlayingActions);
+        self.set_status(GameStatus::AwaitingSteal);
         Ok(())
     }
 
-    pub fn discard(&mut self, player_id : PlayerId, resources : ResourceCounts) -> Result<(), GameError> {
+    pub fn discard(
+        &mut self,
+        player_id: PlayerId,
+        resources: ResourceCounts,
+    ) -> Result<(), GameError> {
         self.check_status(&[StatusKind::AwaitingDiscard])?;
         self.is_player(player_id)?;
-        if let GameStatus::AwaitingDiscard {mut must_discard } = self.status() {
+        if let GameStatus::AwaitingDiscard { mut must_discard } = self.status() {
             if must_discard[player_id.value()] > 0 {
-                if must_discard[player_id.value()] == resources.count(){
+                if must_discard[player_id.value()] == resources.count() {
                     self.get_player_mut(player_id)?.pay(&Cost::new(resources))?;
                     must_discard[player_id.value()] = 0;
                 } else {
-                    return Err(GameError::InvalidDiscardCount)
+                    return Err(GameError::InvalidDiscardCount);
                 }
 
-
-
                 match must_discard {
-                    [0,0,0,0,0,0] => self.set_status(GameStatus::AwaitingNewRobberLocation),
-                    _ => self.set_status(GameStatus::AwaitingDiscard {must_discard})
-
+                    [0, 0, 0, 0, 0, 0] => self.set_status(GameStatus::AwaitingNewRobberLocation),
+                    _ => self.set_status(GameStatus::AwaitingDiscard { must_discard }),
                 }
                 Ok(())
             } else {
@@ -387,8 +435,17 @@ impl Game {
         }
     }
 
-    fn edit_score(&mut self, fun : impl Fn(&mut Player, u8) -> () ,player_id: PlayerId, amount : u8) -> Result<(), GameError> {
-        self.check_status(&[StatusKind::PlayingActions, StatusKind::FirstPlacementSettlement, StatusKind::SecondPlacementSettlement])?;
+    fn edit_score(
+        &mut self,
+        fun: impl Fn(&mut Player, u8) -> (),
+        player_id: PlayerId,
+        amount: u8,
+    ) -> Result<(), GameError> {
+        self.check_status(&[
+            StatusKind::PlayingActions,
+            StatusKind::FirstPlacementSettlement,
+            StatusKind::SecondPlacementSettlement,
+        ])?;
         self.check_player(player_id)?;
         fun(self.get_player_mut(player_id)?, amount);
         self.check_victory()?;
@@ -396,12 +453,67 @@ impl Game {
     }
 
     fn check_victory(&mut self) -> Result<(), GameError> {
-        let winner = self.players.iter().position(|p| p.score() >= self.scenario.max_points());
-        if winner.is_some(){
+        let winner = self
+            .players
+            .iter()
+            .position(|p| p.score() >= self.scenario.max_points());
+        if winner.is_some() {
             let winner = PlayerId::new(winner.unwrap());
-            self.set_status(GameStatus::End{winner});
+            self.set_status(GameStatus::End { winner });
         }
         Ok(())
+    }
+
+    pub fn steal(&mut self, player_id: PlayerId, steal: Option<Steal>) -> Result<(), GameError> {
+        self.check_status(&[StatusKind::AwaitingSteal])?;
+        self.check_player(player_id)?;
+
+        let buildings: Vec<Building> = self.board()?.topology().tile_vertices()
+            [self.board()?.robber().value()]
+        .iter()
+        .map(|&v| self.board().unwrap().buildings()[v.value()])
+        .filter(|&o| o.is_some())
+        .flatten()
+        .collect();
+
+        println!("{:?}", buildings);
+
+        match steal {
+            None => {
+                if buildings.is_empty() {
+                    self.set_status(GameStatus::PlayingActions);
+                    Ok(())
+                } else {
+                    Err(GameError::MustStealSomeone)
+                }
+            }
+            Some(steal) => {
+                if let Some(resource) = steal.resource() {
+                    if buildings.is_empty() {
+                        Err(GameError::NoOneToSteal)
+                    } else if buildings.iter().any(|o| o.owner() == steal.victim()) {
+                        let resource: ResourceCounts = self
+                            .get_player_mut(steal.victim())?
+                            .hand()
+                            .get_resource(resource)?;
+                        self.get_player_mut(steal.victim())?
+                            .pay(&Cost::new(resource))?;
+                        self.get_player_mut(player_id)?.receive(resource);
+                        self.set_status(GameStatus::PlayingActions);
+                        Ok(())
+                    } else {
+                        Err(GameError::UnauthorizedVictim)
+                    }
+                } else {
+                    if self.get_player_mut(steal.victim())?.hand().is_empty() {
+                        self.set_status(GameStatus::PlayingActions);
+                        Ok(())
+                    } else {
+                        Err(GameError::MustStealSomeone)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -411,9 +523,9 @@ mod tests {
     use crate::player::PlayerColor;
     use crate::{Building, NumberToken, ResourceCounts, Tile};
 
+
     #[test]
-    fn partie_complete() {
-        // 1. création + ordre des joueurs par les dés
+    fn init_game() {
         assert!(Game::new(Scenario::test_scenario(), vec![]).is_err());
         let mut game = Game::new(
             Scenario::test_scenario(),
@@ -423,7 +535,7 @@ mod tests {
                 Player::new(PlayerColor::Blue),
             ],
         )
-        .unwrap();
+            .unwrap();
 
         assert_eq!(
             game.set_players_order(vec![Roll::new(2, 4).unwrap()]),
@@ -452,12 +564,13 @@ mod tests {
         assert_eq!(game.current_player(), PlayerId::new(1));
 
         assert_eq!(game.next_player(), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Err(GameError::InvalidGameStatus));
-
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 2).unwrap()),
+            Err(GameError::InvalidGameStatus)
+        );
 
         assert_eq!(game.status(), GameStatus::Starting);
 
-        // 2. start() avec un agencement fixe (terrains non mélangés)
         assert_eq!(
             game.start(&vec![]),
             Err(GameError::BoardInitialization(
@@ -514,9 +627,14 @@ mod tests {
                 Tile::Desert
             ]
         );
+    }
 
-        game = Game::new(
-            Scenario::standard(),
+
+
+    #[test]
+    fn partie_complete() {
+        let mut game = Game::new(
+            Scenario::fast_standard(),
             vec![
                 Player::new(PlayerColor::White),
                 Player::new(PlayerColor::Red),
@@ -538,7 +656,10 @@ mod tests {
 
         assert_eq!(game.status(), GameStatus::FirstPlacementSettlement);
         assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
-        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Err(GameError::InvalidGameStatus));
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 2).unwrap()),
+            Err(GameError::InvalidGameStatus)
+        );
 
         assert_eq!(game.current_player(), PlayerId::new(1));
         assert_eq!(
@@ -565,7 +686,10 @@ mod tests {
         assert_eq!(game.current_player(), PlayerId::new(1));
         assert_eq!(game.status(), GameStatus::FirstPlacementRoad);
         assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
-        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Err(GameError::InvalidGameStatus));
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 2).unwrap()),
+            Err(GameError::InvalidGameStatus)
+        );
 
         assert_eq!(
             game.build_settlement(game.current_player(), VertexId::new(12)),
@@ -646,8 +770,10 @@ mod tests {
 
         assert_eq!(game.status(), GameStatus::SecondPlacementSettlement);
         assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
-        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Err(GameError::InvalidGameStatus));
-
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 2).unwrap()),
+            Err(GameError::InvalidGameStatus)
+        );
 
         assert_eq!(game.current_player(), PlayerId::new(0));
         assert_eq!(
@@ -663,7 +789,10 @@ mod tests {
 
         assert_eq!(game.status(), GameStatus::SecondPlacementRoad);
         assert_eq!(game.next_player(), Err(GameError::TurnDrivenByPlacement));
-        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Err(GameError::InvalidGameStatus));
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 2).unwrap()),
+            Err(GameError::InvalidGameStatus)
+        );
 
         assert_eq!(game.current_player(), PlayerId::new(0));
         assert_eq!(
@@ -726,161 +855,724 @@ mod tests {
 
         assert_eq!(game.status(), GameStatus::AwaitingRoll);
         assert_eq!(game.current_player(), PlayerId::new(1));
-        assert_eq!(game.build_road(PlayerId::new(2), EdgeId::new(8)), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(7)), Err(GameError::InvalidGameStatus));
+        assert_eq!(
+            game.build_road(PlayerId::new(2), EdgeId::new(8)),
+            Err(GameError::InvalidGameStatus)
+        );
+        assert_eq!(
+            game.build_settlement(game.current_player(), VertexId::new(7)),
+            Err(GameError::InvalidGameStatus)
+        );
         assert_eq!(game.next_player(), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(1)), Err(GameError::InvalidGameStatus));
+        assert_eq!(
+            game.upgrade_settlement_to_city(game.current_player(), VertexId::new(1)),
+            Err(GameError::InvalidGameStatus)
+        );
 
-
-        assert_eq!(game.apply_roll(Roll::new(4,5).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,0,1,0,0])]))));
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 5).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[(
+                PlayerId::new(1),
+                [0, 0, 1, 0, 0]
+            )])))
+        );
 
         assert_eq!(game.status(), GameStatus::PlayingActions);
 
-        assert_eq!(game.apply_roll(Roll::new(4,5).unwrap()), Err(GameError::InvalidGameStatus));
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 5).unwrap()),
+            Err(GameError::InvalidGameStatus)
+        );
 
         assert_eq!(game.current_player(), PlayerId::new(1));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 1, 1, 0, 1]));
-        assert_eq!(game.build_road(PlayerId::new(2), EdgeId::new(8)), Err(GameError::NotYourTurn));
-        assert_eq!(game.build_road(game.current_player(), EdgeId::new(8)), Ok(()));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 1, 0, 0, 1]));
-        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(7)), Err(GameError::NotEnoughResources));
-        assert_eq!(game.build_road(game.current_player(), EdgeId::new(7)), Err(GameError::NotEnoughResources));
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([1, 1, 1, 0, 1])
+        );
+        assert_eq!(
+            game.build_road(PlayerId::new(2), EdgeId::new(8)),
+            Err(GameError::NotYourTurn)
+        );
+        assert_eq!(
+            game.build_road(game.current_player(), EdgeId::new(8)),
+            Ok(())
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([0, 1, 0, 0, 1])
+        );
+        assert_eq!(
+            game.build_settlement(game.current_player(), VertexId::new(7)),
+            Err(GameError::Resource(ResourceError::NotEnoughResources))
+        );
+        assert_eq!(
+            game.build_road(game.current_player(), EdgeId::new(7)),
+            Err(GameError::Resource(ResourceError::NotEnoughResources))
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.current_player(), PlayerId::new(2));
-        assert_eq!(game.apply_roll(Roll::new(3,6).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,0,1,0,0])]))));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 1, 1, 0, 1]));
+        assert_eq!(
+            game.apply_roll(Roll::new(3, 6).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[(
+                PlayerId::new(1),
+                [0, 0, 1, 0, 0]
+            )])))
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([0, 1, 1, 0, 1])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.current_player(), PlayerId::new(0));
-        assert_eq!(game.apply_roll(Roll::new(3,3).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,1,0,0,0]), (PlayerId::new(2), [1,0,0,0,0])]))));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 2, 1, 0, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 1, 1, 0]));
+        assert_eq!(
+            game.apply_roll(Roll::new(3, 3).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(1), [0, 1, 0, 0, 0]),
+                (PlayerId::new(2), [1, 0, 0, 0, 0])
+            ])))
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([0, 2, 1, 0, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([1, 0, 1, 1, 0])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.current_player(), PlayerId::new(1));
-        assert_eq!(game.apply_roll(Roll::new(6,4).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(0), [1,0,0,0,0]), (PlayerId::new(1), [0,0,0,1,0]),  (PlayerId::new(2), [0,0,0,1,0])]))));
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([2, 0, 0, 1, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 2, 1, 1, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 1, 2, 0]));
+        assert_eq!(
+            game.apply_roll(Roll::new(6, 4).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(0), [1, 0, 0, 0, 0]),
+                (PlayerId::new(1), [0, 0, 0, 1, 0]),
+                (PlayerId::new(2), [0, 0, 0, 1, 0])
+            ])))
+        );
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 1, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([0, 2, 1, 1, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([1, 0, 1, 2, 0])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.current_player(), PlayerId::new(2));
-        assert_eq!(game.apply_roll(Roll::new(4,6).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(0), [1,0,0,0,0]), (PlayerId::new(1), [0,0,0,1,0]),  (PlayerId::new(2), [0,0,0,1,0])]))));
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 1, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 2, 1, 2, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 1, 3, 0]));
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 6).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(0), [1, 0, 0, 0, 0]),
+                (PlayerId::new(1), [0, 0, 0, 1, 0]),
+                (PlayerId::new(2), [0, 0, 0, 1, 0])
+            ])))
+        );
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([3, 0, 0, 1, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([0, 2, 1, 2, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([1, 0, 1, 3, 0])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.current_player(), PlayerId::new(0));
-        assert_eq!(game.apply_roll(Roll::new(4,2).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,1,0,0,0]), (PlayerId::new(2), [1,0,0,0,0])]))));
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 1, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 3, 1, 2, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 1, 3, 0]));
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 2).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(1), [0, 1, 0, 0, 0]),
+                (PlayerId::new(2), [1, 0, 0, 0, 0])
+            ])))
+        );
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([3, 0, 0, 1, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([0, 3, 1, 2, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 1, 3, 0])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.current_player(), PlayerId::new(1));
-        assert_eq!(game.apply_roll(Roll::new(3,2).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(0), [0,0,0,1,0]), (PlayerId::new(1), [1,0,0,0,0])]))));
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 2, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 3, 1, 2, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 1, 3, 0]));
-        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(20)), Err(GameError::Placement(InvalidAction::NotYourSettlement(VertexId::new(20)))));
-        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(2)), Err(GameError::Placement(InvalidAction::UnexistingBuilding(VertexId::new(2)))));
-        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(1)), Ok(()));
+        assert_eq!(
+            game.apply_roll(Roll::new(3, 2).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(0), [0, 0, 0, 1, 0]),
+                (PlayerId::new(1), [1, 0, 0, 0, 0])
+            ])))
+        );
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([3, 0, 0, 2, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([1, 3, 1, 2, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 1, 3, 0])
+        );
+        assert_eq!(
+            game.upgrade_settlement_to_city(game.current_player(), VertexId::new(20)),
+            Err(GameError::Placement(InvalidAction::NotYourSettlement(
+                VertexId::new(20)
+            )))
+        );
+        assert_eq!(
+            game.upgrade_settlement_to_city(game.current_player(), VertexId::new(2)),
+            Err(GameError::Placement(InvalidAction::UnexistingBuilding(
+                VertexId::new(2)
+            )))
+        );
+        assert_eq!(
+            game.upgrade_settlement_to_city(game.current_player(), VertexId::new(1)),
+            Ok(())
+        );
         assert_eq!(game.players[1].score(), 3);
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 0, 1, 0, 1]));
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([1, 0, 1, 0, 1])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.status(), GameStatus::AwaitingRoll);
         assert_eq!(game.current_player(), PlayerId::new(2));
 
-        assert_eq!(game.apply_roll(Roll::new(3,4).unwrap()), Ok(RollOutcome::RobberActivated {must_discard : [0; 6]}));
+        assert_eq!(
+            game.apply_roll(Roll::new(3, 4).unwrap()),
+            Ok(RollOutcome::RobberActivated {
+                must_discard: [0; 6]
+            })
+        );
         assert_eq!(game.status(), GameStatus::AwaitingNewRobberLocation);
         assert_eq!(game.next_player(), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(20)), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(20)), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.build_road(game.current_player(), EdgeId::new(20)), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.apply_roll(Roll::new(3,4).unwrap()), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.move_robber(game.current_player(), TileId::new(18)), Err(GameError::Placement(InvalidAction::RobberMustMove)));
+        assert_eq!(
+            game.upgrade_settlement_to_city(game.current_player(), VertexId::new(20)),
+            Err(GameError::InvalidGameStatus)
+        );
+        assert_eq!(
+            game.build_settlement(game.current_player(), VertexId::new(20)),
+            Err(GameError::InvalidGameStatus)
+        );
+        assert_eq!(
+            game.build_road(game.current_player(), EdgeId::new(20)),
+            Err(GameError::InvalidGameStatus)
+        );
+        assert_eq!(
+            game.apply_roll(Roll::new(3, 4).unwrap()),
+            Err(GameError::InvalidGameStatus)
+        );
+        assert_eq!(
+            game.move_robber(game.current_player(), TileId::new(18)),
+            Err(GameError::Placement(InvalidAction::RobberMustMove))
+        );
 
-        assert_eq!(game.move_robber(game.current_player(), TileId::new(4)), Ok(()));
+        assert_eq!(
+            game.move_robber(game.current_player(), TileId::new(4)),
+            Ok(())
+        );
+
+        assert_eq!(game.status(), GameStatus::AwaitingSteal);
+        assert_eq!(game.next_player(), Err(GameError::InvalidGameStatus));
+        assert_eq!(
+            game.upgrade_settlement_to_city(game.current_player(), VertexId::new(20)),
+            Err(GameError::InvalidGameStatus)
+        );
+        assert_eq!(
+            game.build_settlement(game.current_player(), VertexId::new(20)),
+            Err(GameError::InvalidGameStatus)
+        );
+        assert_eq!(
+            game.build_road(game.current_player(), EdgeId::new(20)),
+            Err(GameError::InvalidGameStatus)
+        );
+        assert_eq!(
+            game.apply_roll(Roll::new(3, 4).unwrap()),
+            Err(GameError::InvalidGameStatus)
+        );
+
+        assert_eq!(
+            game.steal(game.current_player(), Some(Steal::new(PlayerId::new(1), Some(0)))),
+            Err(GameError::UnauthorizedVictim)
+        );
+
+        assert_eq!(
+            game.steal(game.current_player(), None),
+            Err(GameError::MustStealSomeone)
+        );
+
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([3, 0, 0, 2, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([1, 0, 1, 0, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 1, 3, 0])
+        );
+
+        assert_eq!(game.steal(game.current_player(), Some(Steal::new(PlayerId::new(0), None))), Err(GameError::MustStealSomeone));
+
+
+        assert_eq!(
+            game.steal(game.current_player(), Some(Steal::new(PlayerId::new(0), Some(0)))),
+            Ok(())
+        );
+
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 2, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([1, 0, 1, 0, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([3, 0, 1, 3, 0])
+        );
+
         assert_eq!(game.status(), GameStatus::PlayingActions);
         assert_eq!(game.current_player(), PlayerId::new(2));
 
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 1, 3, 0]));
-        assert_eq!(game.build_road(game.current_player(), EdgeId::new(18)), Ok(()));
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 2, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 0, 1, 0, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 0]));
-
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([3, 0, 1, 3, 0])
+        );
+        assert_eq!(
+            game.build_road(game.current_player(), EdgeId::new(18)),
+            Ok(())
+        );
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 2, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([1, 0, 1, 0, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 3, 0])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.status(), GameStatus::AwaitingRoll);
         assert_eq!(game.current_player(), PlayerId::new(0));
-        assert_eq!(game.apply_roll(Roll::new(3,6).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(1), [0,0,2,0,0])]))));
+        assert_eq!(
+            game.apply_roll(Roll::new(3, 6).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[(
+                PlayerId::new(1),
+                [0, 0, 2, 0, 0]
+            )])))
+        );
         assert_eq!(game.status(), GameStatus::PlayingActions);
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 2, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 0, 3, 0, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 0]));
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 2, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([1, 0, 3, 0, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 3, 0])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.status(), GameStatus::AwaitingRoll);
         assert_eq!(game.current_player(), PlayerId::new(1));
-        assert_eq!(game.apply_roll(Roll::new(3,2).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(0), [0,0,0,1,0]), (PlayerId::new(1), [2,0,0,0,0])]))));
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 3, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([3, 0, 3, 0, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 0]));
+        assert_eq!(
+            game.apply_roll(Roll::new(3, 2).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(0), [0, 0, 0, 1, 0]),
+                (PlayerId::new(1), [2, 0, 0, 0, 0])
+            ])))
+        );
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 3, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([3, 0, 3, 0, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 3, 0])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.status(), GameStatus::AwaitingRoll);
         assert_eq!(game.current_player(), PlayerId::new(2));
-        assert_eq!(game.apply_roll(Roll::new(3,2).unwrap()), Ok(RollOutcome::Production(Production::new(&[(PlayerId::new(0), [0,0,0,1,0]), (PlayerId::new(1), [2,0,0,0,0])]))));
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([3, 0, 0, 4, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([5, 0, 3, 0, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 0]));
+        assert_eq!(
+            game.apply_roll(Roll::new(3, 2).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(0), [0, 0, 0, 1, 0]),
+                (PlayerId::new(1), [2, 0, 0, 0, 0])
+            ])))
+        );
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 4, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([5, 0, 3, 0, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 3, 0])
+        );
 
         assert_eq!(game.next_player(), Ok(()));
         assert_eq!(game.status(), GameStatus::AwaitingRoll);
         assert_eq!(game.current_player(), PlayerId::new(0));
-        assert_eq!(game.apply_roll(Roll::new(1,6).unwrap()), Ok(RollOutcome::RobberActivated {must_discard : [4, 4, 0, 0, 0, 0]}));
-        assert_eq!(game.status(), GameStatus::AwaitingDiscard {must_discard : [4, 4, 0, 0, 0, 0]});
-        assert_eq!(game.discard(PlayerId::new(8), ResourceCounts::new([0,0,0,0,0])), Err(GameError::PlayerNotFound(PlayerId::new(8))));
-        assert_eq!(game.discard(PlayerId::new(4), ResourceCounts::new([0,0,0,0,0])), Err(GameError::PlayerNotFound(PlayerId::new(4))));
-        assert_eq!(game.discard(PlayerId::new(2), ResourceCounts::new([0,0,0,0,0])), Err(GameError::PlayerDontNeedToDiscard));
-        assert_eq!(game.status(), GameStatus::AwaitingDiscard {must_discard : [4, 4, 0, 0, 0, 0]});
+
+        assert_eq!(
+            game.apply_roll(Roll::new(5, 5).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(0), [1, 0, 0, 0, 0]),
+                (PlayerId::new(1), [0, 0, 0, 2, 0]),
+                (PlayerId::new(2), [0, 0, 0, 1, 0])
+            ])))
+        );
+
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([3, 0, 0, 4, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([5, 0, 3, 2, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 4, 0])
+        );
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(1));
+
+        assert_eq!(
+            game.apply_roll(Roll::new(1, 6).unwrap()),
+            Ok(RollOutcome::RobberActivated {
+                must_discard: [4, 5, 0, 0, 0, 0]
+            })
+        );
+        assert_eq!(
+            game.status(),
+            GameStatus::AwaitingDiscard {
+                must_discard: [4, 5, 0, 0, 0, 0]
+            }
+        );
+        assert_eq!(
+            game.discard(PlayerId::new(8), ResourceCounts::new([0, 0, 0, 0, 0])),
+            Err(GameError::PlayerNotFound(PlayerId::new(8)))
+        );
+        assert_eq!(
+            game.discard(PlayerId::new(4), ResourceCounts::new([0, 0, 0, 0, 0])),
+            Err(GameError::PlayerNotFound(PlayerId::new(4)))
+        );
+        assert_eq!(
+            game.discard(PlayerId::new(2), ResourceCounts::new([0, 0, 0, 0, 0])),
+            Err(GameError::PlayerDontNeedToDiscard)
+        );
+        assert_eq!(
+            game.status(),
+            GameStatus::AwaitingDiscard {
+                must_discard: [4, 5, 0, 0, 0, 0]
+            }
+        );
         assert_eq!(game.next_player(), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(20)), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(20)), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.build_road(game.current_player(), EdgeId::new(20)), Err(GameError::InvalidGameStatus));
-        assert_eq!(game.apply_roll(Roll::new(3,4).unwrap()), Err(GameError::InvalidGameStatus));
+        assert_eq!(
+            game.upgrade_settlement_to_city(game.current_player(), VertexId::new(20)),
+            Err(GameError::InvalidGameStatus)
+        );
+        assert_eq!(
+            game.build_settlement(game.current_player(), VertexId::new(20)),
+            Err(GameError::InvalidGameStatus)
+        );
+        assert_eq!(
+            game.build_road(game.current_player(), EdgeId::new(20)),
+            Err(GameError::InvalidGameStatus)
+        );
+        assert_eq!(
+            game.apply_roll(Roll::new(3, 4).unwrap()),
+            Err(GameError::InvalidGameStatus)
+        );
 
-        assert_eq!(game.discard(PlayerId::new(0), ResourceCounts::new([7,0,0,0,0])), Err(GameError::InvalidDiscardCount));
-        assert_eq!(game.discard(PlayerId::new(0), ResourceCounts::new([1,0,0,0,0])), Err(GameError::InvalidDiscardCount));
-        assert_eq!(game.discard(PlayerId::new(0), ResourceCounts::new([4,0,0,0,0])), Err(GameError::NotEnoughResources));
+        assert_eq!(
+            game.discard(PlayerId::new(0), ResourceCounts::new([7, 0, 0, 0, 0])),
+            Err(GameError::InvalidDiscardCount)
+        );
+        assert_eq!(
+            game.discard(PlayerId::new(0), ResourceCounts::new([1, 0, 0, 0, 0])),
+            Err(GameError::InvalidDiscardCount)
+        );
+        assert_eq!(
+            game.discard(PlayerId::new(0), ResourceCounts::new([4, 0, 0, 0, 0])),
+            Err(GameError::Resource(ResourceError::NotEnoughResources))
+        );
 
-        assert_eq!(game.discard(PlayerId::new(0), ResourceCounts::new([2,0,0,2,0])), Ok(()));
-        assert_eq!(game.status(), GameStatus::AwaitingDiscard {must_discard : [0, 4, 0, 0, 0, 0]});
-        assert_eq!(game.discard(PlayerId::new(0), ResourceCounts::new([0,0,0,0,0])), Err(GameError::PlayerDontNeedToDiscard));
-        assert_eq!(game.discard(PlayerId::new(1), ResourceCounts::new([4,0,0,0,0])), Ok(()));
+        assert_eq!(
+            game.discard(PlayerId::new(0), ResourceCounts::new([2, 0, 0, 2, 0])),
+            Ok(())
+        );
+        assert_eq!(
+            game.status(),
+            GameStatus::AwaitingDiscard {
+                must_discard: [0, 5, 0, 0, 0, 0]
+            }
+        );
+        assert_eq!(
+            game.discard(PlayerId::new(0), ResourceCounts::new([0, 0, 0, 0, 0])),
+            Err(GameError::PlayerDontNeedToDiscard)
+        );
+        assert_eq!(
+            game.discard(PlayerId::new(1), ResourceCounts::new([5, 0, 0, 0, 0])),
+            Ok(())
+        );
         assert_eq!(game.status(), GameStatus::AwaitingNewRobberLocation);
 
-        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([1, 0, 0, 2, 1]));
-        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([1, 0, 3, 0, 1]));
-        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 0]));
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([1, 0, 0, 2, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([0, 0, 3, 2, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 4, 0])
+        );
 
-        assert_eq!(game.move_robber(game.current_player(), game.board().unwrap().robber()), Err(GameError::Placement(InvalidAction::RobberMustMove)));
-        assert_eq!(game.move_robber(game.current_player(), TileId::new(12)), Ok(()));
+        assert_eq!(
+            game.move_robber(game.current_player(), game.board().unwrap().robber()),
+            Err(GameError::Placement(InvalidAction::RobberMustMove))
+        );
+        assert_eq!(
+            game.move_robber(game.current_player(), TileId::new(8)),
+            Ok(())
+        );
 
-        assert_eq!(game.status(), GameStatus::PlayingActions);
+        assert_eq!(game.status(), GameStatus::AwaitingSteal);
+
+        assert_eq!(game.steal(game.current_player(), None), Ok(()));
+
+        assert_eq!(
+            game.players[0].hand().resources(),
+            ResourceCounts::new([1, 0, 0, 2, 1])
+        );
+        assert_eq!(
+            game.players[1].hand().resources(),
+            ResourceCounts::new([0, 0, 3, 2, 1])
+        );
+        assert_eq!(
+            game.players[2].hand().resources(),
+            ResourceCounts::new([2, 0, 0, 4, 0])
+        );
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(2));
+
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 1).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(0), [0, 0, 0, 1, 0]),
+                (PlayerId::new(1), [2, 0, 0, 0, 0])
+            ])))
+        );
+
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([2, 0, 3, 2, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 0, 4, 0]));
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(0));
+
+        assert_eq!(
+            game.apply_roll(Roll::new(2, 1).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(1), [1, 0, 0, 0, 0]),
+                (PlayerId::new(2), [0, 0, 0, 0, 1]),
+
+            ])))
+        );
+
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([3, 0, 3, 2, 1]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 0, 4, 1]));
+
+        assert_eq!(game.next_player(), Ok(()));
+
+        assert_eq!(
+            game.apply_roll(Roll::new(6, 6).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(1), [0, 0, 0, 0, 1]),
+            ])))
+        );
+
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([3, 0, 3, 2, 2]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 0, 4, 1]));
+
+        print_builds(&game);
+        assert_eq!(game.build_road(game.current_player(), EdgeId::new(68)), Ok(()));
+        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(7)), Ok(()));
+        assert_eq!(game.build_settlement(game.current_player(), VertexId::new(51)), Ok(()));
+
+        assert_eq!(game.players[1].score(), 5);
+
+
+        assert_eq!(game.players[0].hand().resources(), ResourceCounts::new([1, 0, 0, 3, 1]));
+        assert_eq!(game.players[1].hand().resources(), ResourceCounts::new([0, 0, 0, 0, 0]));
+        assert_eq!(game.players[2].hand().resources(), ResourceCounts::new([2, 0, 0, 4, 1]));
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(2));
+
+        assert_eq!(
+            game.apply_roll(Roll::new(2, 5).unwrap()),
+            Ok(RollOutcome::RobberActivated {
+                must_discard: [0, 0, 0, 0, 0, 0]
+            })
+        );
+        assert_eq!(
+            game.status(),
+            GameStatus::AwaitingNewRobberLocation
+        );
+        assert_eq!(game.move_robber(game.current_player(), TileId::new(0)), Ok(()));
+        assert_eq!(
+            game.status(),
+            GameStatus::AwaitingSteal
+        );
+        assert_eq!(game.steal(game.current_player(), Some(Steal::new(PlayerId::new(1), Some(1)))), Err(GameError::Resource(ResourceError::IsEmpty)));
+        assert_eq!(game.steal(game.current_player(), Some(Steal::new(PlayerId::new(1), None))), Ok(()));
+        assert_eq!(
+            game.status(),
+            GameStatus::PlayingActions
+        );
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(0));
+
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 2).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(1), [0, 2, 0, 0, 0]),
+                (PlayerId::new(2), [1, 0, 0, 0, 0]),
+            ])))
+        );
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(1));
+
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 6).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(0), [1, 0, 0, 0, 0]),
+                (PlayerId::new(1), [0, 0, 0, 2, 0]),
+                (PlayerId::new(2), [0, 0, 0, 1, 0]),
+            ])))
+        );
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(2));
+
+        assert_eq!(
+            game.apply_roll(Roll::new(2, 2).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(0), [0, 0, 0, 0, 1]),
+                (PlayerId::new(1), [0, 1, 0, 0, 0]),
+                (PlayerId::new(2), [0, 1, 0, 0, 0]),
+            ])))
+        );
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(0));
+
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 4).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(0), [0, 0, 1, 0, 1]),
+                (PlayerId::new(2), [0, 0, 1, 0, 0]),
+            ])))
+        );
+
+        assert_eq!(game.next_player(), Ok(()));
+        assert_eq!(game.status(), GameStatus::AwaitingRoll);
+        assert_eq!(game.current_player(), PlayerId::new(1));
+
+        assert_eq!(
+            game.apply_roll(Roll::new(4, 4).unwrap()),
+            Ok(RollOutcome::Production(Production::new(&[
+                (PlayerId::new(0), [0, 0, 1, 0, 1]),
+                (PlayerId::new(2), [0, 0, 1, 0, 0]),
+            ])))
+        );
+
+        assert_eq!(game.upgrade_settlement_to_city(game.current_player(), VertexId::new(33)), Ok(()));
+        assert_eq!(game.status(), GameStatus::End{winner : PlayerId::new(1)});
+
+
 
 
     }
 
-    fn print_builds(game: &Game){
+    fn print_builds(game: &Game) {
         println!("Road");
-        println!("{:?}", game.board().unwrap().roads().iter().enumerate().filter(|(_, o)| o.is_some()).collect::<Vec<(usize, &Option<PlayerId>)>>());
+        println!(
+            "{:?}",
+            game.board()
+                .unwrap()
+                .roads()
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| o.is_some())
+                .collect::<Vec<(usize, &Option<PlayerId>)>>()
+        );
         println!("Buildings");
-        println!("{:?}", game.board().unwrap().buildings().iter().enumerate().filter(|(_, o)| o.is_some()).collect::<Vec<(usize, &Option<Building>)>>());
-
+        println!(
+            "{:?}",
+            game.board()
+                .unwrap()
+                .buildings()
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| o.is_some())
+                .collect::<Vec<(usize, &Option<Building>)>>()
+        );
     }
 }
