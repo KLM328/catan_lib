@@ -1,0 +1,8 @@
+[package]
+name = "catan-client"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+catan.workspace = true
+eframe = "0.29"
