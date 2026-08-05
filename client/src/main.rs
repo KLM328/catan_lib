@@ -16,6 +16,8 @@ fn main() -> eframe::Result {
 struct CatanApp {
     game: Game,
     hex_size: f32,
+    last_roll: Option<Roll>,
+    message : String,
 }
 
 impl CatanApp {
@@ -40,6 +42,8 @@ impl CatanApp {
         Self {
             game,
             hex_size: 80.0,
+            last_roll: None,
+            message: String::new(),
         }
     }
 }
@@ -171,6 +175,7 @@ impl eframe::App for CatanApp {
                 }
             }
 
+
             if response.clicked() {
                 if let Some(pos) = response.interact_pointer_pos() {
                     let radius = self.hex_size * 0.30;
@@ -188,13 +193,15 @@ impl eframe::App for CatanApp {
                         }
                         GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad =>
                             if let Some(edge_location) = layout.pick_edge(topo, (pos.x, pos.y), radius) {
-                                let test = self.game
+                                let _ = self.game
                                     .build_road(
                                         self.game.current_player(),
                                         edge_location,
                                     );
                             }
-                        GameStatus::AwaitingRoll => {}
+                        GameStatus::AwaitingRoll => {
+
+                        }
                         GameStatus::AwaitingDiscard { .. } => {}
                         GameStatus::AwaitingSteal => {}
                         GameStatus::AwaitingNewRobberLocation => {}
@@ -203,8 +210,67 @@ impl eframe::App for CatanApp {
                     }
                 }
             }
+
+
         });
+
+
+        egui::Area::new(egui::Id::new("main_action"))
+            .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-24.0, -24.0))
+            .show(ui.ctx(), |ui| {
+                let base = match self.game.status() {
+                    GameStatus::AwaitingRoll => 100.0,
+                    GameStatus::AwaitingSteal | GameStatus::AwaitingDiscard { .. }
+                    | GameStatus::PlayingActions | GameStatus::AwaitingNewRobberLocation => 60.0,
+                    _ => 0.0,
+                };
+
+                // Pulsation uniquement quand on attend le lancer
+                let die = if matches!(self.game.status(), GameStatus::AwaitingRoll) {
+                    ui.ctx().request_repaint();              // ← sans ça, rien ne bouge
+                    let t = ui.input(|i| i.time) as f32;
+                    base * (1.0 + 0.08 * (t * 3.0).sin())
+                } else {
+                    base
+                };
+
+                let gap = 8.0;
+                let (response, painter) = ui.allocate_painter(
+                    egui::vec2(die * 2.0 + gap, die),
+                    Sense::click(),
+                );
+
+                // Retour visuel au survol
+                let face = if response.hovered() {
+                    Color32::from_rgb(255, 250, 235)
+                } else {
+                    Color32::from_rgb(230, 228, 222)
+                };
+
+                let (a, b) = self.last_roll
+                    .map(|r| (r.dice1(), r.dice2()))
+                    .unwrap_or((1, 1));
+
+                let c = response.rect.center();
+                draw_die(&painter, c - egui::vec2((die + gap) / 2.0, 0.0), die, a, face);
+                draw_die(&painter, c + egui::vec2((die + gap) / 2.0, 0.0), die, b, face);
+
+                match self.game.status() {
+                    GameStatus::AwaitingRoll => {
+                        if response.on_hover_text("Lancer les dés").clicked() {
+                            let roll = Roll::random();
+                            self.last_roll = Some(roll);
+                            self.message = match self.game.apply_roll(roll) {
+                                Ok(outcome) => format!("{outcome:?}"),
+                                Err(e) => format!("{e:?}"),
+                            };
+                        }
+                    }
+                    _ => {}
+                }
+            });
     }
+
 }
 
 fn terrain_color(terrain: Terrain) -> Color32 {
@@ -224,5 +290,27 @@ fn player_color(player: &Player) -> Color32 {
         PlayerColor::Red => Color32::from_rgb(185, 5, 20),
         PlayerColor::White => Color32::from_rgb(255, 255, 210),
         PlayerColor::Orange => Color32::from_rgb(255, 110, 0),
+    }
+}
+
+fn draw_die(painter: &egui::Painter, center: Pos2, size: f32, value: u8, face: Color32) {
+    let rect = egui::Rect::from_center_size(center, egui::vec2(size, size));
+    painter.rect_filled(rect, size * 0.15, face);
+
+    let d = size * 0.25;
+    let dots: &[(f32, f32)] = match value {
+        1 => &[(0.0, 0.0)],
+        2 => &[(-1.0, -1.0), (1.0, 1.0)],
+        3 => &[(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
+        4 => &[(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)],
+        5 => &[(-1.0, -1.0), (1.0, -1.0), (0.0, 0.0), (-1.0, 1.0), (1.0, 1.0)],
+        _ => &[(-1.0, -1.0), (1.0, -1.0), (-1.0, 0.0), (1.0, 0.0), (-1.0, 1.0), (1.0, 1.0)],
+    };
+    for (dx, dy) in dots {
+        painter.circle_filled(
+            center + egui::vec2(dx * d, dy * d),
+            size * 0.09,
+            Color32::from_rgb(30, 30, 30),
+        );
     }
 }

@@ -27,7 +27,6 @@ impl Layout {
     pub fn pick_vertex(&self, topo: &Topology, p: (f32, f32), radius: f32) -> Option<VertexId> {
         let (x, y) = p;
         (0..topo.vertex_count())
-            .into_iter()
             .map(|index| {
                 let v = VertexId::new(index);
                 let (a, b) = self.vertex_position(topo, v);
@@ -41,7 +40,6 @@ impl Layout {
     pub fn pick_edge(&self, topo: &Topology, p: (f32, f32), radius: f32) -> Option<EdgeId> {
         let (x, y) = p;
         (0..topo.edge_count())
-            .into_iter()
             .map(|index| {
                 let e = EdgeId::new(index);
                 (e, self.edge_position(topo, e))
@@ -58,6 +56,8 @@ impl Layout {
         let y = self.hex_size * 1.5 * h.r() as f32;
         (x + self.origin.0, y + self.origin.1)
     }
+
+
 }
 
 #[cfg(test)]

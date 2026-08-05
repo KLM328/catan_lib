@@ -34,6 +34,13 @@ impl Roll {
         let mut rng = rand::rng();
         Self::new(rng.random_range(1..=6), rng.random_range(1..=6)).unwrap()
     }
+
+    pub fn dice1(&self) -> u8 {
+        self.dice1
+    }
+    pub fn dice2(&self) -> u8 {
+        self.dice2
+    }
 }
 
 impl PartialEq for Roll {
