@@ -58,6 +58,10 @@ impl Hand {
 
     }
 
+    pub fn random_pick(&self) -> u8 {
+        rand::random::<u8>() % self.count()
+    }
+
 
 }
 

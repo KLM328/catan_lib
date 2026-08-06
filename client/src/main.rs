@@ -1,7 +1,4 @@
-use catan::{
-    BuildingKind, EdgeId, Game, GameStatus, Layout, Player, PlayerColor, Roll, Scenario, Terrain,
-    TileId, VertexId, GameError
-};
+use catan::{BuildingKind, EdgeId, Game, GameStatus, Layout, Player, PlayerColor, Roll, Scenario, Terrain, TileId, VertexId, GameError, PlayerId, Steal};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Sense, Shape, Stroke};
 
 fn main() -> eframe::Result {
@@ -53,7 +50,7 @@ impl eframe::App for CatanApp {
         egui::CentralPanel::default().show(ui, |ui| {
             ui.heading("Catan");
             ui.label(format!("Statut : {:?}", self.game.status()));
-            ui.label(format!("Joueur courant : {:?}", self.game.current_player()));
+            ui.label(format!("Joueur courant : {}", PlayerColor::color_name(self.game.get_player(self.game.current_player()).unwrap().color())));
             ui.separator();
 
             // On réserve toute la place restante et on récupère un pinceau.
@@ -203,12 +200,68 @@ impl eframe::App for CatanApp {
                         GameStatus::AwaitingDiscard { .. } => {}
                         GameStatus::AwaitingSteal => {}
                         GameStatus::AwaitingNewRobberLocation => {
-                            if let Some(tile_location) = layout.pick_tile(topo, (pos.x, pos.y)) {
+                            let test = layout.pick_tile(topo, (pos.x, pos.y));
+                            if let Some(tile_location) =  test{
                                 let _ = self.game.move_robber(self.game.current_player(), tile_location);
+                            } else {
+                                println!("test : {:?}", test);
                             }
                         }
                         GameStatus::PlayingActions => {}
                         GameStatus::End { .. } => {}
+                    }
+                }
+            }
+
+            if matches!(self.game.status(), GameStatus::AwaitingSteal) {
+                // 1. On extrait les données AVANT le closure
+                let mut chosen: Option<PlayerId> = None;
+
+                if let Ok(victims) = self.game.steal_victims(self.game.current_player()){
+                    const DISC_W: f32 = 78.0;
+                    const GAP: f32 = 10.0;
+
+                    let n = victims.len() as f32;
+                    let total = n * DISC_W + (n - 1.0).max(0.0) * GAP;
+
+
+                    egui::Modal::new(egui::Id::new("steal")).show(ui.ctx(), |ui| {
+                        ui.set_width((total + 48.0).max(240.0));
+
+                        if victims.is_empty() {
+                            ui.label("Personne à voler.");
+                            if ui.button("Continuer").clicked() {
+                                chosen = None;
+                            }
+
+                        } else {
+                            ui.vertical_centered(|ui| {
+                                ui.heading("À qui volez-vous une carte ?");
+                                ui.add_space(14.0);
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = GAP;
+                                    ui.add_space(((ui.available_width() - total) * 0.5).max(0.0));
+                                    for &v in &victims {
+                                        let p = &self.game.get_player(v).unwrap();
+                                        if player_disc(ui, player_color(p), PlayerColor::color_name(p.color()),
+                                                       p.hand().count()).clicked() {
+                                            chosen = Some(v);
+                                        }
+                                    }
+                                });
+                            });
+                        }
+                    });
+                }
+
+                // 2. On applique APRÈS, hors du closure
+                if let Some(victim) = chosen {
+                    if let Err(e) = self.game.steal(self.game.current_player(), Some(Steal::new(victim, self.game.get_player(victim).unwrap().hand().random_pick()))) {
+                        self.message = format!("{e:?}");
+                    }
+                } else {
+                    if let Err(e) = self.game.steal(self.game.current_player(), None) {
+                        self.message = format!("{e:?}");
                     }
                 }
             }
@@ -332,4 +385,37 @@ fn draw_die(painter: &egui::Painter, center: Pos2, size: f32, value: u8, face: C
             Color32::from_rgb(30, 30, 30),
         );
     }
+}
+
+fn player_disc(ui: &mut egui::Ui, color: Color32, name: &str, cards: u8) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(78.0, 104.0), Sense::click());
+    let t = ui.ctx().animate_bool(response.id, response.hovered());   // 0 → 1 en douceur
+    let painter = ui.painter_at(rect);
+
+    let center = egui::pos2(rect.center().x, rect.top() + 36.0);
+    let radius = 27.0 + 3.0 * t;
+
+    if t > 0.0 {
+        painter.circle_filled(center, radius + 7.0, color.gamma_multiply(0.3 * t));
+    }
+    painter.circle_filled(center, radius, color);
+    painter.circle_stroke(center, radius, Stroke::new(2.5, Color32::from_rgb(38, 34, 30)));
+
+    painter.text(
+        egui::pos2(rect.center().x, rect.top() + 78.0),
+        Align2::CENTER_CENTER,
+        name,
+        FontId::proportional(14.0),
+        ui.visuals().text_color(),
+    );
+
+    painter.text(
+        egui::pos2(rect.center().x, rect.top() + 95.0),
+        Align2::CENTER_CENTER,
+        if cards <= 1 { format!("{cards} carte") } else { format!("{cards} cartes") },
+        FontId::proportional(11.0),
+        ui.visuals().weak_text_color(),
+    );
+
+    response
 }

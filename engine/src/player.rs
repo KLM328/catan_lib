@@ -8,6 +8,17 @@ pub enum PlayerColor {
     Orange,
 }
 
+impl PlayerColor {
+    pub fn color_name(self) -> &'static str{
+        match self {
+            PlayerColor::Red => {"Rouge"}
+            PlayerColor::Blue => {"Bleu"}
+            PlayerColor::White => {"Blanc"}
+            PlayerColor::Orange => {"Orange"}
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayerId(usize);
 impl PlayerId {
@@ -15,7 +26,7 @@ impl PlayerId {
         Self(id)
     }
 
-    pub(crate) fn value(self) -> usize {
+    pub fn value(self) -> usize {
         self.0
     }
 }
@@ -39,7 +50,7 @@ impl Player {
         self.color
     }
 
-    pub(crate) fn hand(&self) -> &Hand {
+    pub fn hand(&self) -> &Hand {
         &self.hand
     }
 
