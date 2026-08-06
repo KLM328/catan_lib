@@ -27,7 +27,7 @@ impl Production {
         if let Some(existing) = self.gains.iter_mut()
             .find(|g| g.player == gain.player)
         {
-            existing.resources.add(gain.resources);
+            existing.resources.add(&gain.resources);
         } else {
             self.gains.push(gain);
         }

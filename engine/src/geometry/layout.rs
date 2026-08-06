@@ -31,7 +31,7 @@ impl Layout {
                 let (a, b) = self.tile_position(topo, tile);
                 (tile, (a - x).powi(2) + (y - b).powi(2))
             })
-            .filter(|(_, d)| d <= &self.hex_size)
+            .filter(|(_, d2)| *d2 <= (self.hex_size * 1.2).powi(2))
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(t, _)| t)
     }

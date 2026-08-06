@@ -7,13 +7,23 @@ impl ResourceCounts {
     pub const fn new(counts: [u8; 5]) -> Self {
         Self(counts)
     }
-    pub(crate) fn amount(&self, r: Resource) -> u8 {
+
+    pub fn from_resource(resource: Resource, amount: u8) -> Self {
+        let mut resources = [0; 5];
+        resources[resource.index()] = amount;
+        Self::new(resources)
+    }
+    pub fn amount(&self, r: Resource) -> u8 {
         self.0[r.index()]
     }
-    pub(crate) fn add(&mut self, resources : ResourceCounts) {
+    pub fn add(&mut self, resources : &ResourceCounts) {
         resources.0.iter().enumerate().for_each(|(i, &n)| self.0[i] += n);
     }
-    pub(crate) fn count(&self) -> u8 {
+
+    pub fn remove(&mut self, resources : &ResourceCounts) {
+        resources.0.iter().enumerate().for_each(|(i, &n)| self.0[i] -= n);
+    }
+    pub fn count(&self) -> u8 {
         self.0.iter().copied().sum()
     }
 
@@ -25,9 +35,7 @@ impl ResourceCounts {
     }
     pub(crate) fn try_subtract(&mut self, other: &Self) -> bool {
         if self.covers(other) {
-            for (mine, taken) in self.0.iter_mut().zip(other.0.iter()) {
-                *mine -= taken;
-            }
+            self.remove(other);
             true
         } else {
             false
@@ -51,28 +59,28 @@ mod tests {
     #[test]
     fn test_resource_counts() {
         let mut counts = ResourceCounts::default();
-        counts.add(ResourceCounts::new([1, 0, 0, 0, 0]));
+        counts.add(&ResourceCounts::new([1, 0, 0, 0, 0]));
         assert_eq!(counts.0, [1, 0, 0, 0, 0]);
-        counts.add(ResourceCounts::new([4, 0, 0, 0, 0]));
+        counts.add(&ResourceCounts::new([4, 0, 0, 0, 0]));
         assert_eq!(counts.0, [5, 0, 0, 0, 0]);
-        counts.add(ResourceCounts::new([0, 1, 0, 0, 0]));
+        counts.add(&ResourceCounts::new([0, 1, 0, 0, 0]));
         assert_eq!(counts.0, [5, 1, 0, 0, 0]);
     }
 
     #[test]
     fn test_resource_counts_covers() {
         let mut counts = ResourceCounts::default();
-        counts.add(ResourceCounts::new([1, 0, 0, 0, 0]));
+        counts.add(&ResourceCounts::new([1, 0, 0, 0, 0]));
         assert!(!counts.covers(&Cost::ROAD.resources()));
-        counts.add(ResourceCounts::new([0, 0, 4, 0, 0]));
+        counts.add(&ResourceCounts::new([0, 0, 4, 0, 0]));
         assert!(counts.covers(&Cost::ROAD.resources()));
     }
 
     #[test]
     fn test_resource_counts_try_subtract() {
         let mut counts = ResourceCounts::default();
-        counts.add(ResourceCounts::new([1, 0, 0, 0, 0]));
-        counts.add(ResourceCounts::new([0, 0, 1, 0, 0]));
+        counts.add(&ResourceCounts::new([1, 0, 0, 0, 0]));
+        counts.add(&ResourceCounts::new([0, 0, 1, 0, 0]));
         assert!(counts.try_subtract(&Cost::ROAD.resources()));
         assert_eq!(counts, ResourceCounts::default())
     }

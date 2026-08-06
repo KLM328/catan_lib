@@ -497,13 +497,15 @@ impl Game {
             .flatten()
             .collect();
 
-        let victims: Vec<PlayerId> = buildings
+        let mut victims: Vec<PlayerId> = buildings
             .iter()
             .map(|b| b.owner())
             .filter(|victims_id: &PlayerId| victims_id.value() != player_id.value())
             .filter(|&p| !self.get_player(p).unwrap().hand().is_empty())
             .collect();
 
+        victims.sort_by_key(|p| p.value());
+        victims.dedup();
         Ok(victims)
     }
 
