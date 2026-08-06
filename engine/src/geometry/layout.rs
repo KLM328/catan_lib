@@ -23,7 +23,19 @@ impl Layout {
         (self.vertex_position(topo, a), self.vertex_position(topo, b))
     }
 
-    // pub fn pick_tile(&self, topo: &Topology, p: (f32, f32)) -> Option<TileId>;
+    pub fn pick_tile(&self, topo: &Topology, p: (f32, f32)) -> Option<TileId>{
+        let (x, y) = p;
+        (0..topo.hexes().len())
+            .map(|index| {
+                let tile = TileId::new(index);
+                let (a, b) = self.tile_position(topo, tile);
+                (tile, (a - x).powi(2) + (y - b).powi(2))
+            })
+            .filter(|(_, d)| d <= &self.hex_size)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(t, _)| t)
+    }
+
     pub fn pick_vertex(&self, topo: &Topology, p: (f32, f32), radius: f32) -> Option<VertexId> {
         let (x, y) = p;
         (0..topo.vertex_count())

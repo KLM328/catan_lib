@@ -199,12 +199,14 @@ impl eframe::App for CatanApp {
                                         edge_location,
                                     );
                             }
-                        GameStatus::AwaitingRoll => {
-
-                        }
+                        GameStatus::AwaitingRoll => {}
                         GameStatus::AwaitingDiscard { .. } => {}
                         GameStatus::AwaitingSteal => {}
-                        GameStatus::AwaitingNewRobberLocation => {}
+                        GameStatus::AwaitingNewRobberLocation => {
+                            if let Some(tile_location) = layout.pick_tile(topo, (pos.x, pos.y)) {
+                                let _ = self.game.move_robber(self.game.current_player(), tile_location);
+                            }
+                        }
                         GameStatus::PlayingActions => {}
                         GameStatus::End { .. } => {}
                     }
@@ -215,7 +217,7 @@ impl eframe::App for CatanApp {
         });
 
 
-        egui::Area::new(egui::Id::new("main_action"))
+        egui::Area::new(egui::Id::new("dices"))
             .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-24.0, -24.0))
             .show(ui.ctx(), |ui| {
                 let base = match self.game.status() {
@@ -262,6 +264,23 @@ impl eframe::App for CatanApp {
                             self.last_roll = Some(roll);
                             self.message = match self.game.apply_roll(roll) {
                                 Ok(outcome) => format!("{outcome:?}"),
+                                Err(e) => format!("{e:?}"),
+                            };
+                        }
+                    }
+                    _ => {}
+                }
+            });
+
+        egui::Area::new(egui::Id::new("next_player"))
+            .anchor(Align2::RIGHT_TOP, egui::vec2(-24.0, -24.0))
+            .show(ui.ctx(), |ui| {
+
+                match self.game.status() {
+                    GameStatus::PlayingActions => {
+                        if ui.add(egui::Button::new("Joueur suivant").min_size(egui::vec2(160.0, 44.0))).clicked() {
+                            self.message = match self.game.next_player() {
+                                Ok(()) => "".to_string(),
                                 Err(e) => format!("{e:?}"),
                             };
                         }
