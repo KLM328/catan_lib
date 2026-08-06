@@ -63,6 +63,10 @@ impl Player {
         self.hand.pay(cost)
     }
 
+    pub fn can_pay(&self, cost : &crate::Cost) -> Result<(), ResourceError> {
+        self.hand.can_pay(cost)
+    }
+
     pub(crate) fn score(&self) -> u8 {
         self.score
     }

@@ -1,3 +1,4 @@
+use crate::Resource;
 use crate::resource::counts::ResourceCounts;
 
 pub struct Cost(ResourceCounts);
@@ -10,6 +11,10 @@ impl Cost {
 
     pub(crate) fn new (resources : ResourceCounts) -> Cost {
         Cost(resources)
+    }
+
+    pub fn amount(&self, resource : Resource) -> u8 {
+        self.0.amount(resource)
     }
 
     pub const ROAD : Cost = Cost(ResourceCounts::new([1, 0, 1, 0, 0]));

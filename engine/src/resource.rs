@@ -18,6 +18,8 @@ pub enum Resource {
 }
 
 impl Resource {
+
+    pub const ALL: [Resource; 5] = [Resource::Wood, Resource::Stone, Resource::Brick, Resource::Wheat, Resource::Wool];
     pub(crate) fn index(self) -> usize {
         match self {
             Resource::Wood => 0,

@@ -29,6 +29,13 @@ impl Hand {
         Ok(())
     }
 
+    pub fn can_pay(&self, cost: &Cost) -> Result<(), ResourceError> {
+        if !self.0.covers(&cost.resources()) {
+            return Err(ResourceError::NotEnoughResources);
+        }
+        Ok(())
+    }
+
     pub fn resources(&self) -> ResourceCounts {
         self.0
     }
