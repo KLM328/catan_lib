@@ -126,8 +126,8 @@ impl Game {
             })
         }
     }
-    
-    
+
+
 
     pub fn board(&self) -> Result<&Board, GameError> {
         self.board.as_ref().ok_or(GameError::GameIsStarting)
@@ -478,7 +478,7 @@ impl Game {
         Ok(())
     }
 
-    pub fn steal(&mut self, player_id: PlayerId, steal: Option<Steal>) -> Result<(), GameError> {
+    pub fn steal_victims(&self, player_id: PlayerId) -> Result<Vec<PlayerId>, GameError>{
         self.check_status(&[StatusKind::AwaitingSteal])?;
         self.check_player(player_id)?;
 
@@ -486,18 +486,26 @@ impl Game {
 
         let buildings: Vec<Building> = board.topology().tile_vertices()
             [board.robber().value()]
-        .iter()
-        .map(|&v| board.buildings()[v.value()])
-        .filter(|&o| o.is_some())
-        .flatten()
-        .collect();
+            .iter()
+            .map(|&v| board.buildings()[v.value()])
+            .filter(|&o| o.is_some())
+            .flatten()
+            .collect();
 
         let victims: Vec<PlayerId> = buildings
             .iter()
             .map(|b| b.owner())
             .filter(|victims_id: &PlayerId| victims_id.value() != player_id.value())
-            .filter(|&p| !self.get_player_mut(p).unwrap().hand().is_empty())
+            .filter(|&p| !self.get_player(p).unwrap().hand().is_empty())
             .collect();
+
+        Ok(victims)
+    }
+
+    pub fn steal(&mut self, player_id: PlayerId, steal: Option<Steal>) -> Result<(), GameError> {
+        self.check_status(&[StatusKind::AwaitingSteal])?;
+        self.check_player(player_id)?;
+        let victims = self.steal_victims(player_id)?;
 
         match steal {
             None => {
