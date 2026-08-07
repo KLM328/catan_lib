@@ -77,6 +77,18 @@ impl CatanApp {
 
 impl eframe::App for CatanApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
+        // Taille physique de la fenêtre, indépendante du zoom courant :
+        // screen_rect rétrécit quand pixels_per_point augmente, le produit est stable.
+        let physical_h = ctx.content_rect().height() * ctx.pixels_per_point();
+        let native_ppp = ctx.native_pixels_per_point().unwrap_or(1.0);
+        let target = (physical_h / native_ppp / 1080.0).clamp(0.5, 2.0);
+
+        if (ctx.zoom_factor() - target).abs() > 0.01 {
+            ctx.set_zoom_factor(target);
+        }
+
 
         //discard
         let mut validate = false;
