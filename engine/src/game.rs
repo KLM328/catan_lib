@@ -192,7 +192,7 @@ impl Game {
     }
 
     pub fn get_nex_player(&self) -> PlayerId {
-        PlayerId::new((self.current_turn + 1) % self.turn_order.len())
+        self.turn_order[(self.current_turn + 1) % self.turn_order.len()]
     }
 
 
