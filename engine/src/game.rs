@@ -126,7 +126,14 @@ impl Game {
             })
         }
     }
-
+    
+    pub fn players(&self) -> &[Player] {
+        &self.players
+    }
+    
+    pub fn turn_order(&self) -> &[PlayerId] {
+        &self.turn_order
+    }
 
 
     pub fn board(&self) -> Result<&Board, GameError> {

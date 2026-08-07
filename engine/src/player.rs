@@ -67,7 +67,7 @@ impl Player {
         self.hand.can_pay(cost)
     }
 
-    pub(crate) fn score(&self) -> u8 {
+    pub fn score(&self) -> u8 {
         self.score
     }
 

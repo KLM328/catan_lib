@@ -20,7 +20,13 @@ enum BuildMode {
 }
 
 fn main() -> eframe::Result {
-    let options = eframe::NativeOptions::default();
+
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_fullscreen(true),
+        ..Default::default()
+    };
+
     eframe::run_native(
         "Catan",
         options,
@@ -71,21 +77,35 @@ impl CatanApp {
 
 impl eframe::App for CatanApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+
         //discard
         let mut validate = false;
         let mut discarding: Option<PlayerId> = None;
 
+        if ui.input(|i| i.key_pressed(egui::Key::F11)) {
+            let full = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
+        }
+
+
+        egui::Panel::right("info")
+            .exact_size(300.0)
+            .show(ui, |ui| {
+                ui.add_space(12.0);
+
+                ui.heading("Joueurs");
+                ui.add_space(8.0);
+
+                let current = self.game.current_player();
+                self.game.turn_order().iter().map(|&id| (id, self.game.get_player(id).unwrap())).for_each(|(id, player)| {
+                    player_row(ui, player, id == current);
+                    ui.add_space(6.0);
+                });
+            });
+
         egui::CentralPanel::default().show(ui, |ui| {
+
             ui.label(format!("Statut : {:?}", self.game.status()));
-            ui.label(format!(
-                "Joueur courant : {}",
-                PlayerColor::color_name(
-                    self.game
-                        .get_player(self.game.current_player())
-                        .unwrap()
-                        .color()
-                )
-            ));
 
             // On réserve toute la place restante et on récupère un pinceau.
             let available = ui.available_size();
@@ -351,7 +371,7 @@ impl eframe::App for CatanApp {
         });
 
         egui::Area::new(egui::Id::new("dices"))
-            .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-24.0, -24.0))
+            .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-324.0, -24.0))
             .show(ui.ctx(), |ui| {
                 let base = match self.game.status() {
                     GameStatus::AwaitingRoll => 120.0,
@@ -419,7 +439,7 @@ impl eframe::App for CatanApp {
             });
 
         egui::Area::new(egui::Id::new("next_player"))
-            .anchor(Align2::RIGHT_TOP, egui::vec2(-24.0, 24.0))
+            .anchor(Align2::RIGHT_TOP, egui::vec2(-324.0, 24.0))
             .show(ui.ctx(), |ui| match self.game.status() {
                 GameStatus::PlayingActions => {
                     let next_player = self.game.get_player(self.game.get_nex_player()).unwrap();
@@ -564,7 +584,7 @@ impl eframe::App for CatanApp {
             });
 
         egui::Area::new(egui::Id::new("actions"))
-            .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-242.0, -24.0))
+            .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-542.0, -24.0))
             .show(ui.ctx(), |ui| match self.game.status() {
                 GameStatus::PlayingActions => {
                     let player = self.game.get_player(self.game.current_player()).unwrap();
@@ -834,4 +854,79 @@ fn action_button(
     }
 
     response
+}
+
+fn player_row(ui: &mut egui::Ui, player: &Player, is_current: bool) {
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), 90.0),
+        Sense::hover(),
+    );
+    let painter = ui.painter_at(rect);
+    let color = player_color(player);
+
+    if is_current {
+        painter.rect_filled(rect, 8.0, Color32::from_gray(52));
+        painter.rect_stroke(rect, 8.0, Stroke::new(2.0, color), egui::StrokeKind::Inside);
+    }
+
+    // Ligne 1 : le joueur
+    let line1 = rect.top() + 24.0;
+    let disc = egui::pos2(rect.left() + 32.0, line1);
+    painter.circle_filled(disc, 15.0, color);
+    painter.circle_stroke(disc, 15.0, Stroke::new(2.5, Color32::from_rgb(38, 34, 30)));
+    painter.text(
+        egui::pos2(rect.left() + 58.0, line1),
+        Align2::LEFT_CENTER,
+        PlayerColor::color_name(player.color()),
+        FontId::proportional(19.0),
+        Color32::from_gray(230),
+    );
+
+    // Ligne 2 : cartes à gauche, points à droite
+    let line2 = rect.bottom() - 24.0;
+
+    let resource_card = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 24.0, line2),
+        egui::vec2(14.0, 19.0),
+    );
+    painter.rect_filled(resource_card, 2.0, Color32::from_gray(185));
+    painter.rect_stroke(resource_card, 2.0, Stroke::new(1.5, Color32::from_gray(60)),
+                        egui::StrokeKind::Inside);
+    painter.text(
+        egui::pos2(rect.left() + 42.0, line2),
+        Align2::LEFT_CENTER,
+        player.hand().count().to_string(),
+        FontId::proportional(16.0),
+        Color32::from_gray(200),
+    );
+
+    let dev_card = egui::Rect::from_center_size(
+        egui::pos2(rect.center().x, line2),
+        egui::vec2(14.0, 19.0),
+    );
+    painter.rect_filled(dev_card, 2.0, Color32::from_rgb(75,0,130));
+    painter.rect_stroke(dev_card, 2.0, Stroke::new(1.5, Color32::from_gray(60)),
+                        egui::StrokeKind::Inside);
+    painter.text(
+        egui::pos2(rect.center().x + 24.0, line2),
+        Align2::LEFT_CENTER,
+        0.to_string() ,
+        FontId::proportional(16.0),
+        Color32::from_gray(200),
+    );
+
+    painter.text(
+        egui::pos2(rect.right() - 20.0, line2),
+        Align2::RIGHT_CENTER,
+        player.score().to_string(),
+        FontId::proportional(26.0),
+        Color32::from_gray(245),
+    );
+    painter.text(
+        egui::pos2(rect.right() - 42.0, line2),
+        Align2::RIGHT_CENTER,
+        "pts",
+        FontId::proportional(12.0),
+        Color32::from_gray(150),
+    );
 }
