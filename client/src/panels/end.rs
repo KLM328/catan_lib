@@ -1,0 +1,130 @@
+use crate::cell;
+use crate::theme::player_color;
+use catan::{BuildingKind, Game, GameStatus, Player, PlayerColor, PlayerId};
+use eframe::egui;
+use eframe::egui::{Color32, Sense, Stroke, Ui};
+use std::cmp::Reverse;
+
+pub(crate) fn show(ui: &mut Ui, game: &Game) {
+    const WIDTH: f32 = 700.0;
+    const COL: usize = 6;
+    const SPACE: f32 = 10.0;
+
+    const RADIUS: f32 = 10.0;
+
+    let columns = [
+        "Joueur", "Colonies", "Villes", "Routes", "PV carte", "PV total",
+    ];
+    // if let GameStatus::PlayingActions = game.status() {
+    //     let winner = PlayerId::new(1);
+    if let GameStatus::End { winner } = game.status() {
+
+        egui::Modal::new(egui::Id::new("end")).show(ui.ctx(), |ui| {
+
+
+            ui.set_width(WIDTH);
+            ui.add_space(10.0);
+
+            let champion = game.get_player(winner).unwrap();
+            let c = player_color(champion);
+
+            ui.vertical_centered(|ui| {
+                let (r, _) = ui.allocate_exact_size(egui::vec2(70.0, 70.0), Sense::hover());
+                let p = ui.painter_at(r);
+                p.circle_filled(r.center(), 32.0, c);
+                p.circle_stroke(
+                    r.center(),
+                    32.0,
+                    Stroke::new(3.0, Color32::from_rgb(38, 34, 30)),
+                );
+
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} l'emporte",
+                        PlayerColor::color_name(champion.color())
+                    ))
+                    .size(30.0)
+                    .color(c),
+                );
+            });
+
+            ui.add_space(18.0);
+            ui.separator();
+            ui.add_space(10.0);
+
+            egui::Grid::new("recap")
+                .num_columns(COL)
+                .spacing([SPACE, 12.0])
+                .min_col_width((WIDTH - SPACE * (COL - 1) as f32) / COL as f32)
+                .striped(true)
+                .show(ui, |ui| {
+                    for h in columns {
+                        cell(
+                            ui,
+                            egui::RichText::new(h)
+                                .size(14.0)
+                                .color(Color32::from_gray(150)),
+                        );
+                    }
+                    ui.end_row();
+                    let mut players: Vec<(PlayerId, &Player)> = game
+                        .turn_order()
+                        .iter()
+                        .map(|&p| (p, game.get_player(p).unwrap()))
+                        .collect();
+                    players.sort_by_key(|(_, player)| Reverse(player.score()));
+
+                    for (id, player) in players {
+                        let color = player_color(player);
+                        let board = game.board().unwrap();
+
+                        let settlements = board
+                            .buildings()
+                            .iter()
+                            .flatten()
+                            .filter(|b| b.owner() == id && b.kind() == BuildingKind::Settlement)
+                            .count();
+                        let cities = board
+                            .buildings()
+                            .iter()
+                            .flatten()
+                            .filter(|b| b.owner() == id && b.kind() == BuildingKind::City)
+                            .count();
+                        let roads = board.roads().iter().flatten().filter(|&&p| p == id).count();
+
+                        ui.horizontal(|ui| {
+                            let (r, _) = ui.allocate_exact_size(
+                                egui::vec2(RADIUS * 4.0, RADIUS * 2.0),
+                                Sense::hover(),
+                            );
+                            let p = ui.painter_at(r);
+                            p.circle_filled(r.center(), RADIUS, color);
+                            p.circle_stroke(
+                                r.center(),
+                                RADIUS,
+                                Stroke::new(2.0, Color32::from_rgb(38, 34, 30)),
+                            );
+                            cell(
+                                ui,
+                                egui::RichText::new(PlayerColor::color_name(player.color()))
+                                    .size(17.0)
+                                    .color(color),
+                            );
+                        });
+
+                        cell(ui, egui::RichText::new(settlements.to_string()).size(17.0));
+                        cell(ui, egui::RichText::new(cities.to_string()).size(17.0));
+                        cell(ui, egui::RichText::new(roads.to_string()).size(17.0));
+                        cell(ui, egui::RichText::new(0.to_string()).size(17.0));
+                        cell(
+                            ui,
+                            egui::RichText::new(player.score().to_string()).size(20.0),
+                        );
+                        ui.end_row();
+                    }
+                });
+            ui.add_space(10.0);
+        });
+    }
+}

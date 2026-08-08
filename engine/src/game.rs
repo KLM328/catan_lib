@@ -198,7 +198,7 @@ impl Game {
         }
     }
 
-    pub fn get_nex_player(&self) -> PlayerId {
+    pub fn get_next_player(&self) -> PlayerId {
         self.turn_order[(self.current_turn + 1) % self.turn_order.len()]
     }
 

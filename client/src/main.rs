@@ -1,9 +1,18 @@
-use std::cmp::Reverse;
+mod app;
+mod panels;
+mod theme;
+mod widgets;
+
+pub use app::UiAction;
+use panels::{dice, hand, infos, next_player, end};
+pub(crate) use theme::{player_color, resource_color, terrain_color};
+pub(crate) use widgets::{action_button, disc_button, draw_die, hand_over_button, player_row};
+
 use catan::{
-    BuildingKind, Cost, EdgeId, Game, GameError, GameStatus, Layout, Player, PlayerColor, PlayerId,
-    Resource, ResourceCounts, Roll, Scenario, Steal, Terrain, TileId, VertexId,
+    BuildingKind, EdgeId, Game, GameError, GameStatus, Layout, Player, PlayerColor, PlayerId, ResourceCounts, Roll, Scenario, Steal, TileId, VertexId,
 };
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Sense, Shape, Stroke};
+use crate::panels::actions;
 
 #[derive(PartialEq, Clone, Copy)]
 enum StealChoice {
@@ -21,10 +30,8 @@ enum BuildMode {
 }
 
 fn main() -> eframe::Result {
-
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_fullscreen(true),
+        viewport: egui::ViewportBuilder::default().with_fullscreen(true),
         ..Default::default()
     };
 
@@ -74,10 +81,57 @@ impl CatanApp {
             discard_selection: ResourceCounts::default(),
         }
     }
+
+    fn apply(&mut self, action: UiAction) {
+        let player = self.game.current_player();
+        let result = match action {
+            UiAction::Roll => {
+                let roll = Roll::random();
+                self.last_roll = Some(roll);
+                self.game.apply_roll(roll).map(|outcome| {
+                    self.message = format!("{outcome:?}");
+                })
+            }
+            UiAction::NextPlayer => self.game.next_player(),
+            UiAction::BuildSettlement(vertex_id) => {
+                let result = self.game.build_settlement(player, vertex_id);
+                if let Ok(()) = result {
+                    self.build_mode = BuildMode::None;
+                }
+                result
+            }
+            UiAction::BuildRoad(edge_id) => {
+
+                let result = self.game.build_road(player, edge_id);
+                if let Ok(()) = result {
+                    self.build_mode = BuildMode::None;
+                }
+                result
+            }
+            UiAction::UpgradeCity(vertex_id) => {
+
+                let result = self.game.upgrade_settlement_to_city(player, vertex_id);
+                if let Ok(()) = result {
+                    self.build_mode = BuildMode::None;
+                }
+                result
+            }
+            UiAction::MoveRobber(tile_id) => self.game.move_robber(player, tile_id),
+            UiAction::Steal(steal_option) => self.game.steal(player, steal_option),
+            UiAction::Discard(player, resources) => {
+                self.discard_selection = ResourceCounts::default();
+                self.game.discard(player, resources)
+            }
+        };
+        if let Err(e) = result {
+            self.message = format!("{e:?}");
+        }
+    }
 }
 
 impl eframe::App for CatanApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let mut actions = Vec::new();
         let ctx = ui.ctx().clone();
 
         // Taille physique de la fenêtre, indépendante du zoom courant :
@@ -90,34 +144,15 @@ impl eframe::App for CatanApp {
             ctx.set_zoom_factor(target);
         }
 
-
-        //discard
-        let mut validate = false;
-        let mut discarding: Option<PlayerId> = None;
-
         if ui.input(|i| i.key_pressed(egui::Key::F11)) {
             let full = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
         }
 
-
-        egui::Panel::right("info")
-            .exact_size(300.0)
-            .show(ui, |ui| {
-                ui.add_space(12.0);
-
-                ui.heading("Joueurs");
-                ui.add_space(8.0);
-
-                let current = self.game.current_player();
-                self.game.turn_order().iter().map(|&id| (id, self.game.get_player(id).unwrap())).for_each(|(id, player)| {
-                    player_row(ui, player, id == current);
-                    ui.add_space(6.0);
-                });
-            });
+        infos::show(ui, &self.game);
 
         egui::CentralPanel::default().show(ui, |ui| {
-
             ui.label(format!("Statut : {:?}", self.game.status()));
 
             // On réserve toute la place restante et on récupère un pinceau.
@@ -249,33 +284,22 @@ impl eframe::App for CatanApp {
                             if let Some(vertex_location) =
                                 layout.pick_vertex(topo, (pos.x, pos.y), radius)
                             {
-                                let _ = self
-                                    .game
-                                    .build_settlement(self.game.current_player(), vertex_location);
+                                actions.push(UiAction::BuildSettlement(vertex_location));
                             }
                         }
                         GameStatus::FirstPlacementRoad | GameStatus::SecondPlacementRoad => {
                             if let Some(edge_location) =
                                 layout.pick_edge(topo, (pos.x, pos.y), radius)
                             {
-                                let _ = self
-                                    .game
-                                    .build_road(self.game.current_player(), edge_location);
+                                actions.push(UiAction::BuildRoad(edge_location));
                             }
                         }
                         GameStatus::AwaitingRoll => {}
-                        GameStatus::AwaitingDiscard { .. } => {
-
-                        }
+                        GameStatus::AwaitingDiscard { .. } => {}
                         GameStatus::AwaitingSteal => {}
                         GameStatus::AwaitingNewRobberLocation => {
-                            let test = layout.pick_tile(topo, (pos.x, pos.y));
-                            if let Some(tile_location) = test {
-                                let _ = self
-                                    .game
-                                    .move_robber(self.game.current_player(), tile_location);
-                            } else {
-                                println!("test : {:?}", test);
+                            if let Some(tile_location) = layout.pick_tile(topo, (pos.x, pos.y)) {
+                                actions.push(UiAction::MoveRobber(tile_location));
                             }
                         }
                         GameStatus::PlayingActions => match self.build_mode {
@@ -284,32 +308,21 @@ impl eframe::App for CatanApp {
                                 if let Some(edge_location) =
                                     layout.pick_edge(topo, (pos.x, pos.y), radius)
                                 {
-                                    let _ = self
-                                        .game
-                                        .build_road(self.game.current_player(), edge_location);
-                                    self.build_mode = BuildMode::None;
+                                    actions.push(UiAction::BuildRoad(edge_location));
                                 }
                             }
                             BuildMode::Settlement => {
                                 if let Some(vertex_location) =
                                     layout.pick_vertex(topo, (pos.x, pos.y), radius)
                                 {
-                                    let _ = self.game.build_settlement(
-                                        self.game.current_player(),
-                                        vertex_location,
-                                    );
-                                    self.build_mode = BuildMode::None;
+                                    actions.push(UiAction::BuildSettlement(vertex_location));
                                 }
                             }
                             BuildMode::City => {
                                 if let Some(vertex_location) =
                                     layout.pick_vertex(topo, (pos.x, pos.y), radius)
                                 {
-                                    let _ = self.game.upgrade_settlement_to_city(
-                                        self.game.current_player(),
-                                        vertex_location,
-                                    );
-                                    self.build_mode = BuildMode::None;
+                                    actions.push(UiAction::UpgradeCity(vertex_location))
                                 }
                             }
                         },
@@ -377,666 +390,29 @@ impl eframe::App for CatanApp {
                     )),
                     StealChoice::Pending => return,
                 };
-                if let Err(e) = self.game.steal(self.game.current_player(), steal) {
-                    self.message = format!("{e:?}");
-                }
+                actions.push(UiAction::Steal(steal));
             }
         });
 
-        egui::Area::new(egui::Id::new("dices"))
-            .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-324.0, -24.0))
-            .show(ui.ctx(), |ui| {
-                let base = match self.game.status() {
-                    GameStatus::AwaitingRoll => 120.0,
-                    GameStatus::AwaitingSteal
-                    | GameStatus::AwaitingDiscard { .. }
-                    | GameStatus::PlayingActions
-                    | GameStatus::AwaitingNewRobberLocation => 100.0,
-                    _ => 0.0,
-                };
+        actions.extend(dice::show(ui, &self.game, self));
+        actions.extend(next_player::show(ui, &self.game));
+        actions.extend(hand::show(ui, &self.game, &mut self.discard_selection));
 
-                // Pulsation uniquement quand on attend le lancer
-                let die = if matches!(self.game.status(), GameStatus::AwaitingRoll) {
-                    ui.ctx().request_repaint(); // ← sans ça, rien ne bouge
-                    let t = ui.input(|i| i.time) as f32;
-                    base * (1.0 + 0.08 * (t * 3.0).sin())
-                } else {
-                    base
-                };
+        actions::show(ui, &self.game, &mut self.build_mode);
 
-                let gap = 8.0;
-                let (response, painter) =
-                    ui.allocate_painter(egui::vec2(die * 2.0 + gap, die), Sense::click());
+        end::show(ui, &self.game);
 
-                // Retour visuel au survol
-                let face = if response.hovered() {
-                    Color32::from_rgb(255, 250, 235)
-                } else {
-                    Color32::from_rgb(230, 228, 222)
-                };
-
-                let (a, b) = self
-                    .last_roll
-                    .map(|r| (r.dice1(), r.dice2()))
-                    .unwrap_or((1, 1));
-
-                let c = response.rect.center();
-                draw_die(
-                    &painter,
-                    c - egui::vec2((die + gap) / 2.0, 0.0),
-                    die,
-                    a,
-                    face,
-                );
-                draw_die(
-                    &painter,
-                    c + egui::vec2((die + gap) / 2.0, 0.0),
-                    die,
-                    b,
-                    face,
-                );
-
-                match self.game.status() {
-                    GameStatus::AwaitingRoll => {
-                        if response.on_hover_text("Lancer les dés").clicked() {
-                            let roll = Roll::random();
-                            self.last_roll = Some(roll);
-                            self.message = match self.game.apply_roll(roll) {
-                                Ok(outcome) => format!("{outcome:?}"),
-                                Err(e) => format!("{e:?}"),
-                            };
-                        }
-                    }
-                    _ => {}
-                }
-            });
-
-        egui::Area::new(egui::Id::new("next_player"))
-            .anchor(Align2::RIGHT_TOP, egui::vec2(-324.0, 24.0))
-            .show(ui.ctx(), |ui| match self.game.status() {
-                GameStatus::PlayingActions => {
-                    let next_player = self.game.get_player(self.game.get_nex_player()).unwrap();
-                    if hand_over_button(
-                        ui,
-                        player_color(next_player),
-                        next_player.color().color_name(),
-                    )
-                    .clicked()
-                    {
-                        if let Err(e) = self.game.next_player() {
-                            self.message = format!("{e:?}");
-                        } else {
-                            self.build_mode = BuildMode::None;
-                        }
-                    }
-                }
-                GameStatus::AwaitingDiscard { must_discard} => {
-                    let required = must_discard.iter().find(|&&n| n > 0).copied().unwrap_or(0);
-                    if self.discard_selection.count() == required
-                        && ui.button("Défausser").clicked()
-                    {
-                        validate = true;
-                    }
-                }
-                _ => {}
-            });
-
-        egui::Area::new(egui::Id::new("hand"))
-            .anchor(Align2::LEFT_BOTTOM, egui::vec2(24.0, -24.0))
-            .show(ui.ctx(), |ui| {
-                let (player_id, required) = match self.game.status() {
-                    GameStatus::AwaitingDiscard { must_discard } => {
-                        match must_discard.iter().position(|&n| n > 0) {
-                            Some(i) => (PlayerId::new(i), Some(must_discard[i])),
-                            None => return,
-                        }
-                    }
-                    _ => (self.game.current_player(), None),
-                };
-                if required.is_some() {
-                    discarding = Some(player_id);
-                }
-
-                let player = self.game.get_player(player_id).unwrap();
-                let hand = player.hand();
-
-                const W: f32 = 100.0;
-                const H: f32 = 155.0;
-                const GAP: f32 = 10.0;
-
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        let c = player_color(player);
-                        let label = match required {
-                            Some(n) => format!("{} doit défausser {} / {n}",
-                                               PlayerColor::color_name(player.color()),
-                                               self.discard_selection.count()),
-                            None => format!("Main de {}", PlayerColor::color_name(player.color())),
-                        };
-                        ui.label(egui::RichText::new(label).size(20.0).color(c));
-                    });
-                    ui.add_space(6.0);
-
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = GAP;
-                        for &resource in Resource::ALL.iter() {
-                            let (card, response) =
-                                ui.allocate_exact_size(egui::vec2(W, H), Sense::click());
-                            let painter = ui.painter_at(card);
-                            let count = hand.amount(resource);
-                            let card = egui::Rect::from_min_size(
-                                egui::pos2(card.left(), card.top()),
-                                egui::vec2(W, H),
-                            );
-                            let color = resource_color(resource);
-
-                            if count == 0 {
-                                // Emplacement vide : le contour garde la teinte de la ressource,
-                                // pour qu'on sache de quelle carte il s'agit.
-                                painter.rect_stroke(
-                                    card,
-                                    5.0,
-                                    Stroke::new(2.0, color.gamma_multiply(0.4)),
-                                    egui::StrokeKind::Inside,
-                                );
-                            } else {
-                                painter.rect_filled(card, 5.0, color);
-                                painter.rect_stroke(
-                                    card,
-                                    5.0,
-                                    Stroke::new(2.0, Color32::from_rgb(38, 34, 30)),
-                                    egui::StrokeKind::Inside,
-                                );
-
-                                let badge = egui::pos2(card.center().x, card.bottom() - 22.0);
-                                painter.circle_filled(badge, 16.0, Color32::from_rgb(30, 28, 25));
-                                painter.text(
-                                    badge,
-                                    Align2::CENTER_CENTER,
-                                    count.to_string(),
-                                    FontId::proportional(18.0),
-                                    Color32::from_gray(235),
-                                );
-
-                                let selected =
-                                    required.map_or(0, |_| self.discard_selection.amount(resource));
-                                if selected > 0 {
-                                    // La part défaussée s'efface : on voit ce qu'on va perdre.
-                                    let lost = card.height() * selected as f32 / count.max(1) as f32;
-                                    painter.rect_filled(
-                                        egui::Rect::from_min_size(card.left_top(), egui::vec2(W, lost)),
-                                        5.0,
-                                        Color32::from_black_alpha(170),
-                                    );
-                                    let mark = egui::pos2(card.center().x, card.top() + 22.0);
-                                    painter.circle_filled(mark, 15.0, Color32::from_rgb(150, 40, 40));
-                                    painter.text(
-                                        mark,
-                                        Align2::CENTER_CENTER,
-                                        format!("-{selected}"),
-                                        FontId::proportional(16.0),
-                                        Color32::from_gray(240),
-                                    );
-                                }
-                            }
-
-                            if let Some(required) = required {
-                                let selected = self.discard_selection.amount(resource);
-                                if response.clicked() && selected < count && self.discard_selection.count() < required {
-                                    self.discard_selection.add(&ResourceCounts::from_resource(resource, 1));
-                                }
-                                if response.secondary_clicked() && selected > 0 {
-                                    self.discard_selection.remove(&ResourceCounts::from_resource(resource, 1));
-                                }
-                            }
-                        }
-                    });
-                });
-
-
-            });
-
-        egui::Area::new(egui::Id::new("actions"))
-            .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-542.0, -24.0))
-            .show(ui.ctx(), |ui| match self.game.status() {
-                GameStatus::PlayingActions => {
-                    let player = self.game.get_player(self.game.current_player()).unwrap();
-                    let color = player_color(player);
-
-                    ui.horizontal(|ui| {
-                        // ui.spacing_mut().item_spacing.x = 10.0;
-                        for (mode, cost) in [
-                            (BuildMode::Road, &Cost::ROAD),
-                            (BuildMode::Settlement, &Cost::SETTLEMENT),
-                            (BuildMode::City, &Cost::CITY),
-                        ] {
-                            let ok = player.can_pay(cost).is_ok();
-                            if action_button(ui, mode, self.build_mode, cost, ok, color).clicked()
-                                && ok
-                            {
-                                self.build_mode = if self.build_mode == mode {
-                                    BuildMode::None
-                                } else {
-                                    mode
-                                };
-                            }
-                        }
-                    });
-                }
-
-                _ => {}
-            });
-
-
-
-        if validate {
-            if let Some(player_id) = discarding {
-                if let Err(e) = self.game.discard(player_id, self.discard_selection) {
-                    self.message = format!("{e:?}");
-                }
-                self.discard_selection = ResourceCounts::default();
-            }
-        }
-
-        if let GameStatus::End { winner }= self.game.status() {
-            const WIDTH: f32 = 700.0;
-            const COL: usize = 6;
-            const SPACE: f32 = 10.0;
-
-            const RADUIS : f32 = 10.0;
-
-            let columns = ["Joueur", "Colonies", "Villes", "Routes", "PV carte", "PV total"];
-
-
-            egui::Modal::new(egui::Id::new("end")).show(ui.ctx(), |ui| {
-                ui.set_width(WIDTH);
-                ui.add_space(10.0);
-
-                let champion = self.game.get_player(winner).unwrap();
-                let c = player_color(champion);
-
-                ui.vertical_centered(|ui| {
-                    let (r, _) = ui.allocate_exact_size(egui::vec2(70.0, 70.0), Sense::hover());
-                    let p = ui.painter_at(r);
-                    p.circle_filled(r.center(), 32.0, c);
-                    p.circle_stroke(r.center(), 32.0, Stroke::new(3.0, Color32::from_rgb(38, 34, 30)));
-
-                    ui.add_space(8.0);
-                    ui.label(egui::RichText::new(format!("{} l'emporte",
-                                                         PlayerColor::color_name(champion.color()))).size(30.0).color(c));
-                });
-
-                ui.add_space(18.0);
-                ui.separator();
-                ui.add_space(10.0);
-
-                egui::Grid::new("recap")
-                    .num_columns(COL)
-                    .spacing([SPACE, 12.0])
-                    .min_col_width((WIDTH - SPACE * (COL - 1) as f32) / COL as f32)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for h in columns {
-                            cell(ui, egui::RichText::new(h).size(14.0).color(Color32::from_gray(150)));
-                        }
-                        ui.end_row();
-                        let mut players : Vec<(PlayerId, &Player)> = self.game.turn_order().iter().map(|&p| (p, self.game.get_player(p).unwrap())).collect();
-                        players.sort_by_key(|(_, player)| Reverse(player.score()));
-
-                        for (id, player) in players {
-                            let color = player_color(player);
-                            let board = self.game.board().unwrap();
-
-                            let settlements = board.buildings().iter().flatten()
-                                .filter(|b| b.owner() == id && b.kind() == BuildingKind::Settlement)
-                                .count();
-                            let cities = board.buildings().iter().flatten()
-                                .filter(|b| b.owner() == id && b.kind() == BuildingKind::City)
-                                .count();
-                            let roads = board.roads().iter().flatten()
-                                .filter(|&&p| p == id)
-                                .count();
-
-                            ui.horizontal(|ui| {
-                                let (r, _) = ui.allocate_exact_size(egui::vec2(RADUIS*4.0, RADUIS*2.0), Sense::hover());
-                                let p = ui.painter_at(r);
-                                p.circle_filled(r.center(), RADUIS, color);
-                                p.circle_stroke(r.center(), RADUIS, Stroke::new(2.0, Color32::from_rgb(38, 34, 30)));
-                                cell(ui, egui::RichText::new(PlayerColor::color_name(player.color())).size(17.0).color(color));
-                            });
-
-
-
-                            cell(ui, egui::RichText::new(settlements.to_string()).size(17.0));
-                            cell(ui, egui::RichText::new(cities.to_string()).size(17.0));
-                            cell(ui, egui::RichText::new(roads.to_string()).size(17.0));
-                            cell(ui, egui::RichText::new(0.to_string()).size(17.0));
-                            cell(ui, egui::RichText::new(player.score().to_string()).size(20.0));
-                            ui.end_row();
-                        }
-                    });
-
-                // ui.add_space(20.0);
-                // ui.vertical_centered(|ui| {
-                //     if ui.button(egui::RichText::new("Nouvelle partie").size(18.0)).clicked() {
-                //         *self = CatanApp::new();
-                //     }
-                // });
-                ui.add_space(10.0);
-            });
+        for action in actions {
+            self.apply(action);
         }
     }
-}
-
-fn terrain_color(terrain: Terrain) -> Color32 {
-    match terrain {
-        Terrain::Desert => Color32::from_rgb(224, 201, 138),
-        Terrain::Forest => Color32::from_rgb(45, 90, 39),
-        Terrain::Mountain => Color32::from_rgb(122, 122, 140),
-        Terrain::Hills => Color32::from_rgb(181, 90, 48),
-        Terrain::Pasture => Color32::from_rgb(143, 193, 93),
-        Terrain::Fields => Color32::from_rgb(232, 193, 74),
-    }
-}
-
-fn resource_color(r: Resource) -> Color32 {
-    match r {
-        Resource::Wood => terrain_color(Terrain::Forest),
-        Resource::Brick => terrain_color(Terrain::Hills),
-        Resource::Stone => terrain_color(Terrain::Mountain),
-        Resource::Wheat => terrain_color(Terrain::Fields),
-        Resource::Wool => terrain_color(Terrain::Pasture),
-    }
-}
-
-fn player_color(player: &Player) -> Color32 {
-    match player.color() {
-        PlayerColor::Blue => Color32::from_rgb(0, 0, 250),
-        PlayerColor::Red => Color32::from_rgb(185, 5, 20),
-        PlayerColor::White => Color32::from_rgb(255, 255, 210),
-        PlayerColor::Orange => Color32::from_rgb(255, 110, 0),
-    }
-}
-
-fn draw_die(painter: &egui::Painter, center: Pos2, size: f32, value: u8, face: Color32) {
-    let rect = egui::Rect::from_center_size(center, egui::vec2(size, size));
-    painter.rect_filled(rect, size * 0.15, face);
-
-    let d = size * 0.25;
-    let dots: &[(f32, f32)] = match value {
-        1 => &[(0.0, 0.0)],
-        2 => &[(-1.0, -1.0), (1.0, 1.0)],
-        3 => &[(-1.0, -1.0), (0.0, 0.0), (1.0, 1.0)],
-        4 => &[(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)],
-        5 => &[
-            (-1.0, -1.0),
-            (1.0, -1.0),
-            (0.0, 0.0),
-            (-1.0, 1.0),
-            (1.0, 1.0),
-        ],
-        _ => &[
-            (-1.0, -1.0),
-            (1.0, -1.0),
-            (-1.0, 0.0),
-            (1.0, 0.0),
-            (-1.0, 1.0),
-            (1.0, 1.0),
-        ],
-    };
-    for (dx, dy) in dots {
-        painter.circle_filled(
-            center + egui::vec2(dx * d, dy * d),
-            size * 0.09,
-            Color32::from_rgb(30, 30, 30),
-        );
-    }
-}
-
-fn disc_button(ui: &mut egui::Ui, fill: Option<Color32>, name: &str, sub: &str) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(78.0, 104.0), Sense::click());
-    let t = ui.ctx().animate_bool(response.id, response.hovered());
-    let painter = ui.painter_at(rect);
-
-    let center = egui::pos2(rect.center().x, rect.top() + 36.0);
-    let radius = 27.0 + 3.0 * t;
-
-    match fill {
-        Some(color) => {
-            if t > 0.0 {
-                painter.circle_filled(center, radius + 7.0, color.gamma_multiply(0.3 * t));
-            }
-            painter.circle_filled(center, radius, color);
-            painter.circle_stroke(
-                center,
-                radius,
-                Stroke::new(2.5, Color32::from_rgb(38, 34, 30)),
-            );
-        }
-        None => {
-            let a = 90 + (60.0 * t) as u8;
-            painter.circle_stroke(center, radius, Stroke::new(2.0, Color32::from_gray(a)));
-        }
-    }
-    painter.text(
-        egui::pos2(rect.center().x, rect.top() + 78.0),
-        Align2::CENTER_CENTER,
-        name,
-        FontId::proportional(14.0),
-        ui.visuals().text_color(),
-    );
-
-    painter.text(
-        egui::pos2(rect.center().x, rect.top() + 95.0),
-        Align2::CENTER_CENTER,
-        sub,
-        FontId::proportional(11.0),
-        ui.visuals().weak_text_color(),
-    );
-    response
-}
-
-fn hand_over_button(ui: &mut egui::Ui, next: Color32, name: &str) -> egui::Response {
-    const PAD: f32 = 10.0; // marge gauche et droite
-    const GAP: f32 = 12.0; // entre le texte et le disque
-    const RADIUS: f32 = 18.0;
-    const SLIDE: f32 = 10.0; // course du disque au survol
-    let text_color = Color32::from_gray(220);
-
-    // 1. Mesurer
-    let galley = ui.painter().layout_no_wrap(
-        format!("Au tour de {name}"),
-        FontId::proportional(25.0),
-        text_color,
-    );
-
-    // 2. Allouer d'après la mesure
-    let width = PAD * 2.0 + galley.size().x + GAP + RADIUS * 2.0 + SLIDE + PAD;
-    let height = (galley.size().y + 24.0).max(RADIUS * 2.0 + 16.0);
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), Sense::click());
-
-    // 3. Dessiner
-    let t = ui.ctx().animate_bool(response.id, response.hovered());
-    let painter = ui.painter_at(rect);
-
-    painter.rect_filled(
-        rect,
-        height / 2.0,
-        Color32::from_gray(50 + (20.0 * t) as u8),
-    );
-
-    let text_pos = egui::pos2(
-        rect.left() + PAD * 2.0,
-        rect.center().y - galley.size().y / 2.0,
-    );
-    painter.galley(text_pos, galley, text_color);
-
-    let c = egui::pos2(
-        rect.right() - PAD - RADIUS - SLIDE + SLIDE * t,
-        rect.center().y,
-    );
-    painter.circle_filled(c, RADIUS, next);
-    painter.circle_stroke(c, RADIUS, Stroke::new(2.0, Color32::from_rgb(38, 34, 30)));
-
-    response
-}
-
-fn action_button(
-    ui: &mut egui::Ui,
-    mode: BuildMode,
-    current: BuildMode,
-    cost: &Cost,
-    affordable: bool,
-    color: Color32,
-) -> egui::Response {
-    const S: f32 = 100.0;
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(S, S + 18.0), Sense::click());
-    let t = ui
-        .ctx()
-        .animate_bool(response.id, response.hovered() && affordable);
-    let painter = ui.painter_at(rect);
-
-    let selected = mode == current;
-    let bg = if selected {
-        Color32::from_gray(80)
-    } else {
-        Color32::from_gray(38 + (14.0 * t) as u8)
-    };
-    let body =
-        egui::Rect::from_min_size(egui::pos2(rect.left(), rect.bottom() - S), egui::vec2(S, S));
-    painter.rect_filled(body, 8.0, bg);
-    if selected {
-        painter.rect_stroke(body, 8.0, Stroke::new(2.0, color), egui::StrokeKind::Inside);
-    }
-
-    // La pièce elle-même, dans la couleur du joueur — la même forme que sur le plateau.
-    let c = body.center();
-    let piece = if affordable {
-        color
-    } else {
-        color.gamma_multiply(0.35)
-    };
-    match mode {
-        BuildMode::Road => {
-            painter.line_segment(
-                [c + egui::vec2(-16.0, 8.0), c + egui::vec2(16.0, -8.0)],
-                Stroke::new(7.0, piece),
-            );
-            ()
-        }
-        BuildMode::Settlement => {
-            painter.circle_filled(c, 12.0, piece);
-            ()
-        }
-        BuildMode::City => {
-            painter.rect_filled(
-                egui::Rect::from_center_size(c, egui::vec2(24.0, 24.0)),
-                3.0,
-                piece,
-            );
-            ()
-        }
-        BuildMode::None => (),
-    }
-
-    // Le coût, en pastilles de la couleur des terrains.
-    let dots: Vec<Resource> = Resource::ALL
-        .iter()
-        .flat_map(|&r| std::iter::repeat(r).take(cost.amount(r) as usize))
-        .collect();
-    let dw = 11.0;
-    let start = rect.center().x - (dots.len() as f32 - 1.0) * dw * 0.5;
-    for (i, &r) in dots.iter().enumerate() {
-        let p = egui::pos2(start + i as f32 * dw, rect.top() + 8.0);
-        let col = if affordable {
-            resource_color(r)
-        } else {
-            resource_color(r).gamma_multiply(0.4)
-        };
-        painter.circle_filled(p, 4.5, col);
-    }
-
-    response
-}
-
-fn player_row(ui: &mut egui::Ui, player: &Player, is_current: bool) {
-    let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), 90.0),
-        Sense::hover(),
-    );
-    let painter = ui.painter_at(rect);
-    let color = player_color(player);
-
-    if is_current {
-        painter.rect_filled(rect, 8.0, Color32::from_gray(52));
-        painter.rect_stroke(rect, 8.0, Stroke::new(2.0, color), egui::StrokeKind::Inside);
-    }
-
-    // Ligne 1 : le joueur
-    let line1 = rect.top() + 24.0;
-    let disc = egui::pos2(rect.left() + 32.0, line1);
-    painter.circle_filled(disc, 15.0, color);
-    painter.circle_stroke(disc, 15.0, Stroke::new(2.5, Color32::from_rgb(38, 34, 30)));
-    painter.text(
-        egui::pos2(rect.left() + 58.0, line1),
-        Align2::LEFT_CENTER,
-        PlayerColor::color_name(player.color()),
-        FontId::proportional(19.0),
-        Color32::from_gray(230),
-    );
-
-    // Ligne 2 : cartes à gauche, points à droite
-    let line2 = rect.bottom() - 24.0;
-
-    let resource_card = egui::Rect::from_center_size(
-        egui::pos2(rect.left() + 24.0, line2),
-        egui::vec2(14.0, 19.0),
-    );
-    painter.rect_filled(resource_card, 2.0, Color32::from_gray(185));
-    painter.rect_stroke(resource_card, 2.0, Stroke::new(1.5, Color32::from_gray(60)),
-                        egui::StrokeKind::Inside);
-    painter.text(
-        egui::pos2(rect.left() + 42.0, line2),
-        Align2::LEFT_CENTER,
-        player.hand().count().to_string(),
-        FontId::proportional(16.0),
-        Color32::from_gray(200),
-    );
-
-    let dev_card = egui::Rect::from_center_size(
-        egui::pos2(rect.center().x, line2),
-        egui::vec2(14.0, 19.0),
-    );
-    painter.rect_filled(dev_card, 2.0, Color32::from_rgb(75,0,130));
-    painter.rect_stroke(dev_card, 2.0, Stroke::new(1.5, Color32::from_gray(60)),
-                        egui::StrokeKind::Inside);
-    painter.text(
-        egui::pos2(rect.center().x + 24.0, line2),
-        Align2::LEFT_CENTER,
-        0.to_string() ,
-        FontId::proportional(16.0),
-        Color32::from_gray(200),
-    );
-
-    painter.text(
-        egui::pos2(rect.right() - 20.0, line2),
-        Align2::RIGHT_CENTER,
-        player.score().to_string(),
-        FontId::proportional(26.0),
-        Color32::from_gray(245),
-    );
-    painter.text(
-        egui::pos2(rect.right() - 42.0, line2),
-        Align2::RIGHT_CENTER,
-        "pts",
-        FontId::proportional(12.0),
-        Color32::from_gray(150),
-    );
 }
 
 fn cell(ui: &mut egui::Ui, text: egui::RichText) {
     ui.with_layout(
         egui::Layout::centered_and_justified(egui::Direction::TopDown),
-        |ui| { ui.label(text); },
+        |ui| {
+            ui.label(text);
+        },
     );
 }
