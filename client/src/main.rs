@@ -5,7 +5,7 @@ mod widgets;
 
 pub use app::UiAction;
 pub(crate) use theme::{player_color, resource_color, terrain_color};
-pub(crate) use widgets::{action_button, disc_button, draw_die, hand_over_button, player_row};
+pub(crate) use widgets::{action_button, disc_button, draw_die, hand_over_button, player_row, player_disc, card, badge};
 
 use eframe::egui::{self};
 use crate::app::CatanApp;

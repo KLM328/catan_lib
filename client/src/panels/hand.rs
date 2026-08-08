@@ -2,7 +2,8 @@ use eframe::egui;
 use eframe::egui::{Align2, Color32, FontId, Sense, Stroke, Ui};
 use catan::{Game, GameStatus, PlayerColor, PlayerId, Resource, ResourceCounts};
 use crate::theme::{player_color, resource_color, CARD_H, CARD_W, GAP};
-use crate::{UiAction};
+use crate::{theme, UiAction};
+use crate::widgets::{badge, card};
 
 pub(crate) fn show(ui: &mut Ui, game: &Game, selection: &mut ResourceCounts) -> Vec<UiAction>{
 
@@ -45,61 +46,43 @@ pub(crate) fn show(ui: &mut Ui, game: &Game, selection: &mut ResourceCounts) -> 
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = GAP;
                     for &resource in Resource::ALL.iter() {
-                        let (card, response) =
+                        let (card_rect, response) =
                             ui.allocate_exact_size(egui::vec2(CARD_W, CARD_H), Sense::click());
-                        let painter = ui.painter_at(card);
+                        let painter = ui.painter_at(card_rect);
                         let count = hand.amount(resource);
-                        let card = egui::Rect::from_min_size(
-                            egui::pos2(card.left(), card.top()),
+                        let card_rect = egui::Rect::from_min_size(
+                            egui::pos2(card_rect.left(), card_rect.top()),
                             egui::vec2(CARD_W, CARD_H),
                         );
                         let color = resource_color(resource);
 
+
+
                         if count == 0 {
                             painter.rect_stroke(
-                                card,
+                                card_rect,
                                 5.0,
                                 Stroke::new(2.0, color.gamma_multiply(0.4)),
                                 egui::StrokeKind::Inside,
                             );
                         } else {
-                            painter.rect_filled(card, 5.0, color);
-                            painter.rect_stroke(
-                                card,
-                                5.0,
-                                Stroke::new(2.0, Color32::from_rgb(38, 34, 30)),
-                                egui::StrokeKind::Inside,
-                            );
+                            card(&painter, card_rect, color);
 
-                            let badge = egui::pos2(card.center().x, card.bottom() - 22.0);
-                            painter.circle_filled(badge, 16.0, Color32::from_rgb(30, 28, 25));
-                            painter.text(
-                                badge,
-                                Align2::CENTER_CENTER,
-                                count.to_string(),
-                                FontId::proportional(18.0),
-                                Color32::from_gray(235),
-                            );
+                            let badge_pos = egui::pos2(card_rect.center().x, card_rect.bottom() - 22.0);
+                            badge(&painter, badge_pos, 16.0, &count.to_string(), theme::OUTLINE, Color32::from_gray(240));
 
                             let selected =
                                 required.map_or(0, |_| selection.amount(resource));
                             if selected > 0 {
                                 // La part défaussée s'efface : on voit ce qu'on va perdre.
-                                let lost = card.height() * selected as f32 / count.max(1) as f32;
+                                let lost = card_rect.height() * selected as f32 / count.max(1) as f32;
                                 painter.rect_filled(
-                                    egui::Rect::from_min_size(card.left_top(), egui::vec2(CARD_W, lost)),
+                                    egui::Rect::from_min_size(card_rect.left_top(), egui::vec2(CARD_W, lost)),
                                     5.0,
                                     Color32::from_black_alpha(170),
                                 );
-                                let mark = egui::pos2(card.center().x, card.top() + 22.0);
-                                painter.circle_filled(mark, 15.0, Color32::from_rgb(150, 40, 40));
-                                painter.text(
-                                    mark,
-                                    Align2::CENTER_CENTER,
-                                    format!("-{selected}"),
-                                    FontId::proportional(16.0),
-                                    Color32::from_gray(240),
-                                );
+                                let mark = egui::pos2(card_rect.center().x, card_rect.top() + 22.0);
+                                badge(&painter, mark, 16.0, &selected.to_string(), Color32::from_rgb(150, 40, 40), Color32::from_gray(240));
                             }
                         }
 

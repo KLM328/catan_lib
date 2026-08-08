@@ -12,7 +12,7 @@ pub(crate) enum StealChoice {
     Victim(PlayerId),
 }
 
-fn show(ui : &mut Ui, game : &Game) -> Vec<UiAction>{
+pub(crate) fn show(ui : &mut Ui, game : &Game) -> Vec<UiAction>{
     let mut actions = Vec::new();
     if matches!(game.status(), GameStatus::AwaitingSteal) {
         // 1. On extrait les données AVANT le closure

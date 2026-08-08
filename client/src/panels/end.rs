@@ -4,6 +4,7 @@ use catan::{BuildingKind, Game, GameStatus, Player, PlayerColor, PlayerId};
 use eframe::egui;
 use eframe::egui::{Color32, Sense, Stroke, Ui};
 use std::cmp::Reverse;
+use crate::widgets::player_disc;
 
 pub(crate) fn show(ui: &mut Ui, game: &Game) {
     const WIDTH: f32 = 700.0;
@@ -31,12 +32,7 @@ pub(crate) fn show(ui: &mut Ui, game: &Game) {
             ui.vertical_centered(|ui| {
                 let (r, _) = ui.allocate_exact_size(egui::vec2(70.0, 70.0), Sense::hover());
                 let p = ui.painter_at(r);
-                p.circle_filled(r.center(), 32.0, c);
-                p.circle_stroke(
-                    r.center(),
-                    32.0,
-                    Stroke::new(3.0, Color32::from_rgb(38, 34, 30)),
-                );
+                player_disc(&p, r.center(), 32.0, c);
 
                 ui.add_space(8.0);
                 ui.label(
@@ -99,12 +95,7 @@ pub(crate) fn show(ui: &mut Ui, game: &Game) {
                                 Sense::hover(),
                             );
                             let p = ui.painter_at(r);
-                            p.circle_filled(r.center(), RADIUS, color);
-                            p.circle_stroke(
-                                r.center(),
-                                RADIUS,
-                                Stroke::new(2.0, Color32::from_rgb(38, 34, 30)),
-                            );
+                            player_disc(&p, r.center(), RADIUS, color);
                             cell(
                                 ui,
                                 egui::RichText::new(PlayerColor::color_name(player.color()))

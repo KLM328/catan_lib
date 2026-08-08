@@ -1,6 +1,7 @@
 use eframe::egui;
 use eframe::egui::{Align2, Color32, FontId, Pos2, Sense, Shape, Stroke, Ui};
 use catan::{BuildingKind, EdgeId, Game, GameStatus, Layout, TileId, VertexId};
+use crate::panels::{actions, steal};
 use crate::theme::{player_color, terrain_color};
 use crate::UiAction;
 
@@ -15,6 +16,8 @@ pub(crate) enum BuildMode {
 pub(crate) fn show(ui: &mut Ui, game: &Game, hex_size : &mut f32, build_mode : &BuildMode) -> Vec<UiAction> {
     let mut actions = Vec::new();
     egui::CentralPanel::default().show(ui, |ui| {
+        actions.extend(steal::show(ui, game));
+
         ui.label(format!("Statut : {:?}", game.status()));
 
         // On réserve toute la place restante et on récupère un pinceau.
@@ -188,6 +191,6 @@ pub(crate) fn show(ui: &mut Ui, game: &Game, hex_size : &mut f32, build_mode : &
             }
         }
     });
-    
+
     actions
 }

@@ -1,5 +1,6 @@
 use eframe::egui;
 use eframe::egui::{Color32, FontId, Sense, Stroke};
+use crate::widgets::player_disc;
 
 pub(crate) fn hand_over_button(ui: &mut egui::Ui, next: Color32, name: &str) -> egui::Response {
     const PAD: f32 = 10.0; // marge gauche et droite
@@ -40,8 +41,8 @@ pub(crate) fn hand_over_button(ui: &mut egui::Ui, next: Color32, name: &str) -> 
         rect.right() - PAD - RADIUS - SLIDE + SLIDE * t,
         rect.center().y,
     );
-    painter.circle_filled(c, RADIUS, next);
-    painter.circle_stroke(c, RADIUS, Stroke::new(2.0, Color32::from_rgb(38, 34, 30)));
+    
+    player_disc(&painter, c, RADIUS, next);
 
     response
 }
