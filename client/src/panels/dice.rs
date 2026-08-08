@@ -1,10 +1,10 @@
+use crate::widgets::draw_die;
+use crate::UiAction;
+use catan::{Game, GameStatus, Roll};
 use eframe::egui;
 use eframe::egui::{Align2, Color32, Sense, Ui};
-use catan::{Game, GameStatus};
-use crate::{CatanApp, UiAction};
-use crate::widgets::draw_die;
 
-pub(crate) fn show(ui: &mut Ui, game: &Game, app : &CatanApp) -> Vec<UiAction> {
+pub(crate) fn show(ui: &mut Ui, game: &Game, last_roll: &mut Option<Roll>) -> Vec<UiAction> {
     let mut actions = Vec::new();
 
     egui::Area::new(egui::Id::new("dices"))
@@ -39,10 +39,7 @@ pub(crate) fn show(ui: &mut Ui, game: &Game, app : &CatanApp) -> Vec<UiAction> {
                 Color32::from_rgb(230, 228, 222)
             };
 
-            let (a, b) = app
-                .last_roll
-                .map(|r| (r.dice1(), r.dice2()))
-                .unwrap_or((1, 1));
+            let (a, b) = last_roll.map(|r| (r.dice1(), r.dice2())).unwrap_or((1, 1));
 
             let c = response.rect.center();
             draw_die(

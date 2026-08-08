@@ -2,7 +2,7 @@ use eframe::egui;
 use eframe::egui::{Align2, Color32, FontId, Sense, Stroke, Ui};
 use catan::{Game, GameStatus, PlayerColor, PlayerId, Resource, ResourceCounts};
 use crate::theme::{player_color, resource_color, CARD_H, CARD_W, GAP};
-use crate::{CatanApp, UiAction};
+use crate::{UiAction};
 
 pub(crate) fn show(ui: &mut Ui, game: &Game, selection: &mut ResourceCounts) -> Vec<UiAction>{
 

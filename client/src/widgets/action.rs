@@ -1,7 +1,7 @@
 use eframe::egui;
 use eframe::egui::{Color32, Sense, Stroke};
 use catan::{Cost, Resource};
-use crate::BuildMode;
+use crate::panels::board::BuildMode;
 use crate::theme::resource_color;
 
 pub(crate) fn action_button(

@@ -1,7 +1,7 @@
 use eframe::egui;
 use eframe::egui::{Align2, Ui};
 use catan::{Cost, Game, GameStatus};
-use crate::{BuildMode};
+use crate::panels::board::BuildMode;
 use crate::theme::player_color;
 use crate::widgets::action_button;
 
